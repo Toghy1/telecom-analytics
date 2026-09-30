@@ -1,0 +1,52 @@
+:root {
+  --tp-primary: #1f6feb;
+  --tp-primary-dark: #1a5fd0;
+  --tp-bg: #f5f7fa;
+  --tp-text: #303133;
+  --tp-text-sub: #909399;
+  --tp-radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--tp-bg);
+  color: var(--tp-text);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/**
+ * 卡片网格——套餐卡片 / 活动卡片的列表布局。
+ *
+ * 放在全局而不是各页面 scoped 样式里，是因为它被**三个页面原样共用**：
+ * 首页（节选）、套餐资费浏览（全量）、促销活动浏览（全量）。
+ * 卡片内容已经抽成了组件，若栅格还留在各页面各写一份，
+ * 「改一次列宽要改三处、漏一处就和另两页对不齐」的问题原样还在。
+ *
+ * `--wide` 给文字量大的卡片用（活动卡），列宽放宽是为了少折行。
+ */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.card-grid--wide {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}

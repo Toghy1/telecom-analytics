@@ -1,0 +1,29 @@
+# 电信用户行为分析系统 —— 仓库根 .gitignore
+#
+# 本仓库是**多模块工程**（见决策「工程划分为双应用」）：
+#   business / realtime / offline / frontend / mock
+# 目前只有 frontend/ 与 init/ 两个目录，其余模块随编码逐步加入。
+# 因此这里的规则按「整仓库通用」写，模块内特有的规则放各自的 .gitignore。
+
+# ── 依赖与构建产物 ──
+node_modules/          # 组员 npm i 自行生成，不入库（这是分发代码方案的前提）
+dist/                  # 前端构建产物，由 npm run build 生成
+target/                # 将来 Java / Maven 模块的构建输出
+*.class
+
+# ── 前端开发缓存 ──
+.vite/
+
+# ── IDE 与编辑器 ──
+.idea/
+*.iml
+.vscode/
+
+# ── 系统垃圾文件 ──
+.DS_Store               # macOS
+Thumbs.db               # Windows
+*.log
+
+# ── 本地临时文件 ──
+*.local
+tools/                  # 本地下载的二进制工具（如 cloudflared.exe），体积大且非源码
