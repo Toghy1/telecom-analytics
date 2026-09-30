@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import PortalLayout from '@/layouts/PortalLayout.vue'
 import UserLayout from '@/layouts/UserLayout.vue'
+import AdminLayout from '@/layouts/AdminLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { reportPageView } from '@/utils/tracker'
 import { isRoleAllowed } from './access'
@@ -73,8 +74,8 @@ const routes = [
      *    渲染这一片，得先有一套「管理员自己的 `t_account`」的语义，
      *    而那是管理后台的活，不是自助营业厅的活。
      *
-     *    管理员的营业厅面入口是**尚未建成的管理后台**（账号管理 / 套餐配置 /
-     *    工单处理），建成时会是 `/admin/*`，届时挂他自己的 `roles`。
+     *    管理员的营业厅面入口是**管理后台**（账号管理 / 套餐配置 / 工单处理），
+     *    已于 2026-09-30 建成，见下面 `path: '/admin'` 那一组，挂他自己的 `roles`。
      */
     meta: { requiresAuth: true, roles: ['USER'] },
     children: [
@@ -174,6 +175,51 @@ const routes = [
     name: 'screenPipeline',
     component: () => import('@/views/screen/Pipeline.vue'),
     meta: { title: '系统运行分析', requiresAuth: true, roles: ['ANALYST', 'ADMIN'] }
+  },
+  /**
+   * 管理后台（系统管理员）。《开发文档》§6.6，**整个前端的最后一页**。
+   *
+   * ⚠️ **这三条路由都没有 `meta.track`，与大屏同理、同样是刻意的。**
+   *    十二个埋点事件全部来自营业厅，管理后台一个都不占。两层理由：
+   *    ① 角色表写明系统管理员「不产生行为数据」，故 `tracker.js#send()`
+   *       那道角色闸会把这里的一切上报拦掉——写了也是死代码。
+   *    ② 即便不拦，管理员的浏览行为也不该进 `dwd_behavior_log`：
+   *       那份日志的分析对象是「**用户**对系统做了什么」，
+   *       管理员不属于被观察的人群。这一点与大屏那条注释是同一个边界。
+   *
+   * ⚠️ `roles` **必须显式写**。不写 `roles` 等于「不限角色」，任何已登录
+   *    角色都能进来——而管理员能看到全部账号的手机号、身份证（虽已脱敏）、
+   *    全部工单正文，这一片是全项目权限最重的地方。
+   *
+   * ⚠️ 三条路由的 `title` 照写，`afterEach` 靠它拼浏览器标题。不写 `track`
+   *    与不写 `title` 是两件事，别一起漏掉。
+   */
+  {
+    path: '/admin',
+    component: AdminLayout,
+    // 落到「用户管理」——管理员登录后的第一站（见 Login.vue 的 `ROLE_HOME`）
+    redirect: { name: 'adminUsers' },
+    meta: { requiresAuth: true, roles: ['ADMIN'] },
+    children: [
+      {
+        path: 'users',
+        name: 'adminUsers',
+        component: () => import('@/views/admin/Users.vue'),
+        meta: { title: '用户管理' }
+      },
+      {
+        path: 'packages',
+        name: 'adminPackages',
+        component: () => import('@/views/admin/Packages.vue'),
+        meta: { title: '套餐配置' }
+      },
+      {
+        path: 'tickets',
+        name: 'adminTickets',
+        component: () => import('@/views/admin/Tickets.vue'),
+        meta: { title: '工单管理' }
+      }
+    ]
   },
   {
     path: '/login',

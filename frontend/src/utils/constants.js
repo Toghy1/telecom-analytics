@@ -24,6 +24,29 @@ export const PACKAGE_UNITS = {
 /** 金额单位 */
 export const CURRENCY = '元'
 
+/**
+ * 角色（`t_account.role`）的中文名与标签色。
+ *
+ * `ROLE_LABEL` 原先只在 `Login.vue` 里有一份局部副本（用于演示账号提示区）。
+ * 管理后台的「用户管理」页也要按角色显示中文名与标签色，于是把它提到这里
+ * ——**同一个角色名在登录页与管理后台不能有两种写法**。
+ *
+ * `ROLE_TAG` 是 `el-tag` 的 type，取值与 `TICKET_STATUS[x].tag` 同一套路。
+ * 色彩只是为了让三种角色在一列里一眼分开，没有语义（`danger` 不表示
+ * 「管理员是危险的」，只是红色与另两色区分度最大）。
+ */
+export const ROLE_LABEL = {
+  USER: '电信用户',
+  ANALYST: '运营分析员',
+  ADMIN: '系统管理员'
+}
+
+export const ROLE_TAG = {
+  USER: 'info',
+  ANALYST: 'warning',
+  ADMIN: 'danger'
+}
+
 /** 账单流水方向。⚠️ 金额一律存正数，方向由 type 区分（见 claude.md 业务数据模型决策）。 */
 export const BILL_TYPE = {
   BILL: { label: '消费', sign: '-' },

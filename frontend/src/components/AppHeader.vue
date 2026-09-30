@@ -22,6 +22,18 @@ const canEnterUserArea = computed(() =>
   isRoleAllowed(router.resolve({ name: 'dashboard' }).meta, auth.account?.role)
 )
 
+/**
+ * 「管理后台」入口该不该显示。与 `canEnterUserArea` **同一个模式**：
+ * 不写 `auth.account?.role === 'ADMIN'`，而是去问 `isRoleAllowed()`——
+ * 「谁能进 `/admin`」只在路由表的 `meta.roles` 里写一份，这里读那一份。
+ *
+ * 两个入口天然互斥（`/user` 只列 USER、`/admin` 只列 ADMIN），所以模板里
+ * 各写各的 `v-if`，不需要 else 把它们串起来。
+ */
+const canEnterAdminArea = computed(() =>
+  isRoleAllowed(router.resolve({ name: 'adminUsers' }).meta, auth.account?.role)
+)
+
 async function handleLogout() {
   // ⚠️ 埋点必须在清登录态**之前**上报。
   // auth.logout() 会把 localStorage 里的账号清掉，而 reportAction 是从
@@ -62,6 +74,13 @@ async function handleLogout() {
              而这种「点了弹走」的入口比没有入口更糟，用户会以为系统坏了。 -->
         <router-link v-if="canEnterUserArea" :to="{ name: 'dashboard' }" class="hdr__nav-item">
           我的账户
+        </router-link>
+        <!-- 管理后台入口。管理员登录后本就落在 `/admin/users`，这一项是让他
+             从营业厅（他也能看首页 / 套餐 / 活动的公开页）**回得去**的退路。
+             同一个 `AppHeader` 挂在三个营业厅布局页上，所以管理员无论逛到哪一页
+             都能看见它。判断同上：走 `isRoleAllowed`，不写死角色。 -->
+        <router-link v-if="canEnterAdminArea" :to="{ name: 'adminUsers' }" class="hdr__nav-item">
+          管理后台
         </router-link>
       </nav>
 

@@ -5,6 +5,10 @@ import { useAuthStore } from '@/stores/auth'
 import { getDemoHint } from '@/api/auth'
 import { reportAction } from '@/utils/tracker'
 import { isRoleAllowed } from '@/router/access'
+// 角色中文名原先在这里有一份局部副本，2026-09-30 提到 constants.js——
+// 管理后台的「用户管理」页也要按角色显示中文名与标签色，
+// 同一个角色名在登录页与管理后台不能有两种写法。
+import { ROLE_LABEL } from '@/utils/constants'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,26 +18,25 @@ const auth = useAuthStore()
 // 三个角色各一行——切角色只换登录标识，口令三个账号共用同一个。
 const demoAccounts = getDemoHint()
 
-/** 角色中文名，仅用于提示区。取自《开发文档》角色表。 */
-const ROLE_LABEL = {
-  USER: '电信用户',
-  ANALYST: '运营分析员',
-  ADMIN: '系统管理员'
-}
-
 /**
  * 各角色登录后的落脚页（见 claude.md 决策「分析平台角色守卫与登录分流」）。
  *
- * ⚠️ `ADMIN` 暂落营业厅首页 `/`——管理后台（用户管理 / 套餐配置 / 工单处理）
- *    尚未建成，指不过去。
- *    **别顺手改成 `/user/dashboard`**：那是用户自助页，管理员进去看到的是
- *    `mockAccount`（那个电信用户）的余额与账单，不是他自己的东西；
- *    `/user` 的 `roles` 也只列了 `USER`，进去照样会被守卫弹回来。
+ * ⚠️ `ADMIN` 自 2026-09-30 起落**管理后台**（`/admin/users`）。此前暂落营业厅
+ *    首页 `/`，是因为管理后台尚未建成、指不过去；建成后不再有理由让它落在
+ *    一个与自己职责无关的页面上。
+ *
+ *    **仍然别顺手把 USER 的落点搬给 ADMIN**：`/user/dashboard` 是用户自助页，
+ *    管理员进去看到的是 `mockAccount`（那个电信用户）的余额与账单，
+ *    不是他自己的东西；`/user` 的 `roles` 也只列了 `USER`，进去照样会被守卫弹回来。
+ *
+ * ⚠️ 这里配的地址必须**能通过 `isRoleAllowed()`**——`resolveTarget()` 会把
+ *    它交给守卫用的同一个函数再问一次。`/admin/*` 的 roles 含 ADMIN，所以成立；
+ *    这一点在改本表时要想一遍：**回落目标自己进不去，登录就会来回弹。**
  */
 const ROLE_HOME = {
   USER: '/user/dashboard',
   ANALYST: '/screen',
-  ADMIN: '/'
+  ADMIN: '/admin/users'
 }
 
 const form = reactive({
