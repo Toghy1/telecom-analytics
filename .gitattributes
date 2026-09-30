@@ -1,0 +1,39 @@
+# 行尾统一 —— 让所有人拿到的文件逐字节一致，与各自的 local 配置无关
+#
+# 为什么需要这个文件：`core.autocrlf` 是**本地**配置，不进仓库。本项目开发在
+# Windows、运行在 CentOS 7 的 Linux VM；队友 clone 后只要本地设置不同（或被
+# `git config --global` 覆盖），提交时就会把 CRLF 写进仓库，表现为「每个文件都
+# 改了」的假 diff——而且是在别人的机器上发生。写进仓库才能对所有人、所有机器生效。
+#
+# 本文件的优先级高于 `core.autocrlf`，不需要任何人改自己的本地配置。
+
+# 一律 LF：仓库存 LF，工作区也给 LF。
+# 选 `eol=lf` 而不是只写 `text=auto`，是因为代码最终要跑在 Linux VM 上，
+# 且前端是 JS / Vue（npm / ESLint / Vite 全家都偏爱 LF）。
+* text=auto eol=lf
+
+# Windows 批处理必须 CRLF，否则某些命令解析会出错（当前没有此类文件，留位）
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Shell 脚本必须 LF —— CRLF 会让 `#!/bin/bash` 那一行直接报错，
+# 这是硬性故障而不是风格问题（将来 VM 上的 verify.sh 等）
+*.sh   text eol=lf
+
+# 二进制：`text=auto` 本可凭 NUL 字节自动识别，这几行是保险，
+# 也防止将来有人往仓库里放图片 / 字体时被当作文本处理
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.jar   binary
+*.class binary
