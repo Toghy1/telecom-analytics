@@ -4,11 +4,19 @@
 #   business / realtime / offline / frontend / mock
 # 目前只有 frontend/ 与 init/ 两个目录，其余模块随编码逐步加入。
 # 因此这里的规则按「整仓库通用」写，模块内特有的规则放各自的 .gitignore。
+#
+# ⚠️ 注释必须**单独占一行**。gitignore 不支持行尾注释 —— 写成
+#       tools/   # 本地下载的二进制工具
+#    整行会被当成一个字面 pattern，既忽略不了 tools/、也不报错。本文件此前
+#    每一条都踩了这个坑，导致 target/ 等规则全是死的（2026-10-10 修正）。
 
 # ── 依赖与构建产物 ──
-node_modules/          # 组员 npm i 自行生成，不入库（这是分发代码方案的前提）
-dist/                  # 前端构建产物，由 npm run build 生成
-target/                # 将来 Java / Maven 模块的构建输出
+# node_modules：组员 npm i 自行生成，不入库（这是「分发代码」方案的前提）
+node_modules/
+# dist：前端构建产物，由 npm run build 生成
+dist/
+# target：Java / Maven 模块的构建输出
+target/
 *.class
 
 # ── 前端开发缓存 ──
@@ -20,10 +28,11 @@ target/                # 将来 Java / Maven 模块的构建输出
 .vscode/
 
 # ── 系统垃圾文件 ──
-.DS_Store               # macOS
-Thumbs.db               # Windows
+.DS_Store
+Thumbs.db
 *.log
 
 # ── 本地临时文件 ──
 *.local
-tools/                  # 本地下载的二进制工具（如 cloudflared.exe），体积大且非源码
+# tools：本地下载的二进制工具（如 cloudflared.exe），体积大且非源码
+tools/
