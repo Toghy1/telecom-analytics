@@ -1,0 +1,11 @@
+# ⚠️ 注释必须单独占一行。gitignore 不支持行尾注释 —— `out/  # 说明` 会被
+#    整体当成一个字面 pattern，既忽略不了 out/、也不会报错。
+
+# 生成物，不入库：跑一遍脚本就有，换台机器重新生成即可
+out/
+seed.sql
+users.tsv
+
+# Python 缓存
+__pycache__/
+*.pyc
