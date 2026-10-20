@@ -1,11 +1,13 @@
 # 电信用户行为分析系统 · 前端演示
 
-这是项目的**前端部分**：一个可以直接在浏览器里点开的完整演示，包含
-**营业厅、用户自助、实时大屏、管理后台**四块界面。
+这是项目的**前端部分**，包含**营业厅、用户自助、实时大屏、管理后台**四块界面。
 
-⚠️ **当前阶段没有后端**。所有数据都是前端写死的假数据，接口函数内部直接返回结果、
-不会发出任何网络请求。因此你**不需要**安装 MySQL、Redis、Docker 或任何后端服务，
-只要装好 Node.js 就能完整跑起来。
+数据分两段：
+
+- **营业厅、管理后台、大屏实时板块①②、登录**仍是前端假数据（`frontend/src/api/mock/`），只装 Node.js 就能跑；
+- **大屏离线板块③④与子页 `/screen/pipeline`** 已接本地后端（MySQL 8 + ETL + Spring Boot）。**不启动后端时，这几块图没有数据**，页面其余部分不受影响。
+
+完整跑通离线数据需要 MySQL 8 + JDK 17 + Maven，步骤见第五节。
 
 ---
 
@@ -15,7 +17,8 @@
 |---|---|
 | **Node.js ≥ 20.19** | 必装。推荐 20 LTS 或 22 以上（用 `node -v` 查看版本） |
 | 浏览器 | Chrome / Edge 均可 |
-| ~~MySQL / Redis / Docker / 后端~~ | **不需要** |
+| **MySQL 8 + JDK 17 + Maven** | 可选。只有要看分析平台的**真数据**时才需要，见第五节 |
+| Redis / Kafka / Docker | **不需要** |
 
 ---
 
@@ -61,19 +64,63 @@ npm run dev
 
 ---
 
-## 五、关于「假数据」
+## 五、可选：接通本地离线数据
 
-- 每个接口的假数据实现在 `frontend/src/api/mock/` 目录下，
-  例如登录就是拿 `mock/account.js` 里的账号直接比对口令。
-- 这个目录的定位是**「假装自己是后端的输出」**，（包括手机号、身份证的脱敏，
-  也是在这一层做掉的，页面里没有任何脱敏代码）。
+只看营业厅与管理后台可以跳过本节。要让分析平台显示真数据，在项目根目录按顺序执行：
+
+**1. 建库建表**（MySQL root 口令按你本机的改）
+
+```bash
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS demo01 DEFAULT CHARACTER SET utf8mb4"
+mysql -u root -p demo01 < db/schema.sql
+```
+
+> PowerShell 不支持 `<` 重定向，这一步请用 **CMD** 或 **Git Bash** 执行。
+
+**2. 灌数据**（读 `mock/out/`；会清空行为表与账号 / 套餐种子表，别指向有真实数据的库）
+
+```bash
+cd etl
+python etl.py --input ../mock/out --password 123456
+cd ..
+```
+
+**3. 起后端**（新开一个终端）
+
+```bash
+cd backend
+mvn -DskipTests package
+java -jar target/analysis-service-0.1.0.jar
+```
+
+**4. 起前端**（再开一个终端，或沿用第二节已启动的）
+
+```bash
+cd frontend
+npm run dev
+```
+
+Vite 已把 `/api` 代理到 `http://127.0.0.1:8080`，前端不用改地址。
+
+> 当前数据：2026-10-06 ~ 10-19 共 14 天、500 用户、61,109 行（入库 56,220 / 判脏 4,889）。
+> 判脏率、漏斗、留存、地域 / 套餐 / 活跃度分布均由 `etl/etl.py` 算出。
+
+---
+
+## 六、关于「假数据」
+
+- **仍走假数据的**：营业厅业务页、管理后台、大屏实时板块①②、登录与权限。
+- 假数据实现在 `frontend/src/api/mock/` 目录下，例如登录就是拿 `mock/account.js` 里的账号直接比对口令；
+  手机号、身份证的脱敏也在这一层做掉，页面里没有任何脱敏代码。
+- **已接真数据的**：`api/screen.js` 的离线指标（漏斗 / 留存 / 地域 / 套餐 / 活跃度）与
+  `api/pipeline.js` 的四块（今日管道量 / 脏数据趋势 / 规则命中 / 死信）。
 - 后端就绪后，整个 `api/mock/` 目录会被删掉，`api/` 下的函数改成发真实请求。
 
 **所以：不要把这个目录里的假数据当成真实需求的依据，改数据也不会影响真实业务。**
 
 ---
 
-## 六、常见问题
+## 七、常见问题
 
 **① 页面白屏，或者终端报 504 / 依赖相关错误**
 
@@ -119,7 +166,7 @@ Vite 会自动换到 5174 或下一个可用端口，**看终端实际打印的�
 
 ---
 
-## 七、目录结构
+## 八、目录结构
 
 ```
 demo01/
@@ -128,7 +175,7 @@ demo01/
 │   ├── index.html
 │   ├── package.json       依赖清单与启动脚本
 │   ├── package-lock.json  锁定依赖版本，别删
-│   ├── vite.config.js     构建配置（端口 5173）
+│   ├── vite.config.js     构建配置（端口 5173 + /api 代理）
 │   ├── public/map/        大屏用的地图数据
 │   └── src/
 │       ├── api/           所有接口封装（集中在这里，页面不直接调 axios）
@@ -139,6 +186,16 @@ demo01/
 │       ├── stores/        Pinia 状态（登录态）
 │       ├── utils/         工具函数
 │       └── views/         页面
+├── db/
+│   └── schema.sql         11 张表的建表 DDL（业务 7 + 行为 4）
+├── etl/
+│   └── etl.py             离线 ETL 替身：mock/out → MySQL（仅依赖 pymysql）
+├── backend/               Spring Boot 3.5 / JDK 17 本地只读服务
+│   ├── pom.xml
+│   └── src/main/...       /api/screen/* 三个只读接口
+├── mock/
+│   ├── simulate_access.py 造数脚本（含 8% 脏数据注入）
+│   └── out/               造数产物：users.json + behavior_YYYY-MM-DD.jsonl
 └── init/
     ├── 开发文档.md        需求、功能清单与设计说明
     └── claude.md          决策记录：开发过程中每个取舍的原因
@@ -146,7 +203,7 @@ demo01/
 
 ---
 
-## 八、构建生产版本
+## 九、构建生产版本
 
 ```bash
 cd frontend

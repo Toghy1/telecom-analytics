@@ -30,7 +30,16 @@ export default defineConfig({
     //    同网段访问用 `http://<本机内网IP>:5173`。
     host: '0.0.0.0',
     port: 5173,
-    open: false
+    open: false,
+
+    // 本地最小闭环：前端的 /api 请求代理到本地 Spring Boot 服务（8080）。
+    // 页面与 api 层不用改端口，生产环境由 Nginx 做同源反代。
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true
+      }
+    }
 
     // 这里原先有一行 `allowedHosts: ['.serveousercontent.com', '.lhr.life', '.trycloudflare.com']`，
     // 那是「公网内网穿透」演示方案的配套——不加的话，Vite 5.4.12 起的 DNS 重绑定防护

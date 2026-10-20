@@ -1,9 +1,7 @@
+import request from './request'
 import {
-  mockOfflineMetrics,
   mockPageHeat,
   mockCategoryDist,
-  STAT_DATE,
-  TOTAL_USERS,
   buildTrend,
   buildHourlyHeatmap,
   buildHeatmapDayLabels
@@ -14,12 +12,12 @@ import { shiftDays } from '@/utils/datetime'
 /**
  * 大屏数据访问层。
  *
- * 本阶段是「纯前端 + 假数据」：直接读 `src/api/mock/screen.js`。
- * 后端接口就绪后，把每个函数体换成一行 `request.get(...)` 即可，
- * **页面组件一行都不用改**（选型⑤ 纪律①）。
+ * 离线指标（板块③④）已接本地后端（`GET /api/screen/offline-metrics`）；
+ * 实时指标（板块①②）仍走假数据——实时链路不在本轮最小闭环里
+ * （决策「开发期采用本地 Windows 最小闭环」）。页面组件一行未改。
  *
  * 这一层存在的意义不只是「换个地方发请求」，更是**把这几个指标的查询口径
- * 收口到一处**。大屏有四个板块十来个图，若每个板块各自去 mock 里捞一遍，
+ * 收口到一处**。大屏有四个板块十来个图，若每个板块各自去拉一遍，
  * 「地域分布按哪个口径聚合」「漏斗要不要按 session 去重」这类问题就会
  * 在四个地方各答一遍，答得还不一样。
  *
@@ -31,9 +29,28 @@ import { shiftDays } from '@/utils/datetime'
  *  服务端接口编号                                                        *
  * ------------------------------------------------------------------ */
 
-/** 离线指标（板块③④）——一次拉全，前端按 `metric_code` 分组。 */
+/**
+ * 离线指标（板块③④）——一次拉全，前端按 `metric_code` 分组。
+ *
+ * ⚠️ 四个图表各要一组行，若各自去请求就是四次相同的全表查询。
+ *    这里把**同一个 Promise 缓存**住：大屏上离线指标一天只更新一次，
+ *    没有理由拉四遍。请求失败时清掉缓存，让下一次调用还能重试
+ *    （与 `ensureChinaMap()` 处理失败的方式一致）。
+ */
+let offlinePromise = null
+
+function fetchOffline() {
+  if (!offlinePromise) {
+    offlinePromise = request.get('/screen/offline-metrics').catch((err) => {
+      offlinePromise = null
+      throw err
+    })
+  }
+  return offlinePromise
+}
+
 export function getOfflineMetrics() {
-  return Promise.resolve(mockOfflineMetrics)
+  return fetchOffline()
 }
 
 /**
@@ -120,7 +137,9 @@ export function getCategoryDist() {
  * 真实实现是一次 SQL 查询，这里模拟「按指标编码取一组行」这一件事。
  */
 function pick(metricCode) {
-  return mockOfflineMetrics.filter((row) => row.metric_code === metricCode)
+  return fetchOffline().then((rows) =>
+    rows.filter((row) => row.metric_code === metricCode)
+  )
 }
 
 /**
@@ -128,12 +147,13 @@ function pick(metricCode) {
  * 见 `constants.js` 的 `FUNNEL_STEP` 注释。
  */
 export function getFunnel() {
-  const rows = pick('funnel')
-  const map = {}
-  rows.forEach((row) => {
-    map[row.dimension_value] = row.metric_value
+  return pick('funnel').then((rows) => {
+    const map = {}
+    rows.forEach((row) => {
+      map[row.dimension_value] = row.metric_value
+    })
+    return map
   })
-  return Promise.resolve(map)
 }
 
 /**
@@ -150,35 +170,44 @@ export function getFunnel() {
  * 拼在值里是这张表的既定用法，前端拆开即可。
  */
 export function getRetention() {
-  const rows = pick('retention')
+  return pick('retention').then((rows) => {
+    // 统计日取数据行里的最大值。原来写死在 mock 常量里，接后端后
+    // 统计日由 ETL 决定（最新批次日），不能再写死一个日期——
+    // 否则换一份数据，整条曲线的横轴会整体错位且不报错。
+    const statDate = rows.reduce(
+      (max, row) => (row.stat_date > max ? row.stat_date : max), ''
+    )
 
-  // 横轴先定下来：截止到统计日的近 14 个自然日。**不来自数据行。**
-  // 这是本函数唯一容易写错的地方——按数据推横轴的版本更短，也更像对
-  // （「有几天的 cohort 就画几天」），但缺值的那天会被静默抽掉而不是
-  // 留空档，图上完全看不出少了。见 `utils/datetime.js#shiftDays`。
-  const dates = []
-  for (let i = RETENTION_DAYS - 1; i >= 0; i--) {
-    dates.push(shiftDays(STAT_DATE, -i))
-  }
+    // 横轴先定下来：截止到统计日的近 14 个自然日。**不来自数据行。**
+    // 这是本函数唯一容易写错的地方——按数据推横轴的版本更短，也更像对
+    // （「有几天的 cohort 就画几天」），但缺值的那天会被静默抽掉而不是
+    // 留空档，图上完全看不出少了。见 `utils/datetime.js#shiftDays`。
+    const dates = []
+    if (statDate) {
+      for (let i = RETENTION_DAYS - 1; i >= 0; i--) {
+        dates.push(shiftDays(statDate, -i))
+      }
+    }
 
-  const d1Map = {}
-  const d7Map = {}
+    const d1Map = {}
+    const d7Map = {}
 
-  rows.forEach((row) => {
-    const [date, kind] = String(row.dimension_value).split('|')
-    if (!date || !kind) return
-    if (kind === 'd1') d1Map[date] = row.metric_value
-    if (kind === 'd7') d7Map[date] = row.metric_value
-  })
+    rows.forEach((row) => {
+      const [date, kind] = String(row.dimension_value).split('|')
+      if (!date || !kind) return
+      if (kind === 'd1') d1Map[date] = row.metric_value
+      if (kind === 'd7') d7Map[date] = row.metric_value
+    })
 
-  return Promise.resolve({
-    dates,
-    // 落在轴外（或口径没算出来）的行自然被忽略，轴上这点就是 null。
-    // 缺口一律落 null，**绝不用 0 兜底**——0% 留存是「一个人都没回来」，
-    // null 是「还不知道」，是两句完全不同的话，画出来一条贴地的线和一段
-    // 断线也不一样。
-    d1: dates.map((date) => (date in d1Map ? d1Map[date] : null)),
-    d7: dates.map((date) => (date in d7Map ? d7Map[date] : null))
+    return {
+      dates,
+      // 落在轴外（或口径没算出来）的行自然被忽略，轴上这点就是 null。
+      // 缺口一律落 null，**绝不用 0 兜底**——0% 留存是「一个人都没回来」，
+      // null 是「还不知道」，是两句完全不同的话，画出来一条贴地的线和一段
+      // 断线也不一样。
+      d1: dates.map((date) => (date in d1Map ? d1Map[date] : null)),
+      d7: dates.map((date) => (date in d7Map ? d7Map[date] : null))
+    }
   })
 }
 
@@ -199,29 +228,30 @@ export function getHourlyHeatmap() {
  * 见 `mock/screen.js` 的说明——前端不做「市 → 省」的截取。
  */
 export function getRegionDist() {
-  const rows = pick('region_dist').sort((a, b) => b.metric_value - a.metric_value)
-  return Promise.resolve(
-    rows.map((row) => ({ name: row.dimension_value, value: row.metric_value }))
+  return pick('region_dist').then((rows) =>
+    [...rows]
+      .sort((a, b) => b.metric_value - a.metric_value)
+      .map((row) => ({ name: row.dimension_value, value: row.metric_value }))
   )
 }
 
 /** 套餐分布。 */
 export function getPackageDist() {
-  const rows = pick('package_dist').sort((a, b) => b.metric_value - a.metric_value)
-  return Promise.resolve(
-    rows.map((row) => ({ name: row.dimension_value, value: row.metric_value }))
+  return pick('package_dist').then((rows) =>
+    [...rows]
+      .sort((a, b) => b.metric_value - a.metric_value)
+      .map((row) => ({ name: row.dimension_value, value: row.metric_value }))
   )
 }
 
 /** 活跃度分层。顺序固定为 高 → 中 → 低，不按数值排。 */
 export function getActivityDist() {
   const order = ['高频活跃', '中频活跃', '低频活跃']
-  const rows = pick('activity_level')
-  const map = {}
-  rows.forEach((row) => {
-    map[row.dimension_value] = row.metric_value
+  return pick('activity_level').then((rows) => {
+    const map = {}
+    rows.forEach((row) => {
+      map[row.dimension_value] = row.metric_value
+    })
+    return order.map((name) => ({ name, value: map[name] ?? 0 }))
   })
-  return Promise.resolve(order.map((name) => ({ name, value: map[name] ?? 0 })))
 }
-
-export { STAT_DATE, TOTAL_USERS }

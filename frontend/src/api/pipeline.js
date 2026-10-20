@@ -1,18 +1,11 @@
-import {
-  pipelineToday,
-  dirtyRatioTrend7d,
-  dirtyRatioTrend30d,
-  mockDeadLetters
-} from './mock/pipeline'
-import { mockRuleHits } from './mock/screen'
+import request from './request'
 import { DIRTY_RULE, DIRTY_SOURCE } from '@/utils/constants'
-import { paginate } from './mock/paginate'
 
 /**
  * 子页 · 系统运行分析的数据访问层。
  *
- * 与 `api/screen.js` 一样，本阶段直接读 mock；后端就绪后逐个换成
- * `request.get(...)`，页面一行不改。
+ * 四块内容里，前三块来自一次聚合查询（`/screen/pipeline/summary`），
+ * 第四块是独立的分页查询（`/screen/dead-letters`）。页面组件一行未改。
  *
  * ⚠️ 子页与主页**同为分析平台，但取数方式不同**：主页的实时部分走 SSE，
  *    子页走普通 REST + 定时刷新（决策「分析平台采用『主页 + 子页』结构」
@@ -37,9 +30,9 @@ import { paginate } from './mock/paginate'
  *   `passRate` 为入库率（百分比，保留 1 位小数）。
  */
 export function getPipelineToday() {
-  const { collected, dirty, stored } = pipelineToday
-  const passRate = collected === 0 ? 0 : Math.round((stored / collected) * 1000) / 10
-  return Promise.resolve({ ...pipelineToday, passRate })
+  return request
+    .get('/screen/pipeline/summary')
+    .then((summary) => summary.today)
 }
 
 /* ------------------------------------------------------------------ *
@@ -50,7 +43,9 @@ export function getPipelineToday() {
  * @param {7|30} days 近 7 天或近 30 天
  */
 export function getDirtyRatioTrend(days = 7) {
-  return Promise.resolve(days === 30 ? dirtyRatioTrend30d : dirtyRatioTrend7d)
+  return request
+    .get('/screen/pipeline/summary')
+    .then((summary) => (days === 30 ? summary.trend30d : summary.trend7d))
 }
 
 /* ------------------------------------------------------------------ *
@@ -74,13 +69,17 @@ export function getDirtyRatioTrend(days = 7) {
  *    就说明有一处漏算了规则——这是子页唯一能自查的算术约束。
  */
 export function getRuleHits() {
-  const rows = Object.entries(DIRTY_RULE).map(([code, meta]) => ({
-    code,
-    label: meta.label,
-    value: mockRuleHits[code] ?? 0
-  }))
-  const total = rows.reduce((sum, row) => sum + row.value, 0)
-  return Promise.resolve({ rows, total })
+  return request.get('/screen/pipeline/summary').then((summary) => {
+    // 轴仍然取自常量，后端只给「每个编码命中多少」。
+    // 这样某条规则今天零命中时它画成 0 值柱，而不是从图上消失。
+    const rows = Object.entries(DIRTY_RULE).map(([code, meta]) => ({
+      code,
+      label: meta.label,
+      value: summary.ruleHits[code] ?? 0
+    }))
+    const total = rows.reduce((sum, row) => sum + row.value, 0)
+    return { rows, total }
+  })
 }
 
 /* ------------------------------------------------------------------ *
@@ -105,14 +104,11 @@ export function getRuleHits() {
  *   `source` 传空（`''` / `undefined`）表示不过滤。
  */
 export function listDeadLetters({ page = 1, size = 5, source = '' } = {}) {
-  const rows = source
-    ? mockDeadLetters.filter((row) => row.source === source)
-    : mockDeadLetters
-
-  // 按失败时间倒序——死信表是「最近出了什么问题」，最新的一条要在最上面
-  const sorted = [...rows].sort((a, b) => b.fail_time.localeCompare(a.fail_time))
-
-  return Promise.resolve(paginate(sorted, page, size))
+  // 排序（fail_time 倒序）与分页都在 SQL 里做，前端不再排序——
+  // 否则接口换了排序口径，前端会「顺手」把它排回原样，掩盖改动。
+  return request.get('/screen/dead-letters', {
+    params: { page, size, source }
+  })
 }
 
 /** 死信来源下拉项。 */

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-模拟用户访问脚本 —— 造 500 个模拟用户，并为每人生成 100 条操作记录，
+模拟用户访问脚本 —— 造 500 个模拟用户，按「注册日 + 回访概率」生成行为，
 再按《开发文档》§5.4 注入合计 8% 的脏数据。
+
+**每人条数不是固定的**：用户先定一个注册日，之后按活跃档位以不同概率回访。
+只来注册那天的低频用户不到 10 条，天天回来的高频用户能到上百条 ——
+大屏的「活跃度分层」与「次日 / 7 日留存」正是靠这层差异才画得出来。
 
 产出（默认写到 mock/out/）：
 
-    users.json                 500 个用户：id / 手机号 / 归属地 / 套餐
-    behavior_YYYY-MM-DD.jsonl  按天切分的行为日志，每人 100 条基础记录
+    users.json                 500 个用户：id / 手机号 / 归属地 / 套餐 / 注册日
+    behavior_YYYY-MM-DD.jsonl  按天切分的行为日志：登录用户行为 + 游客会话
 
 字段严格对齐《开发文档》§5.1.2 的 10 个公共字段，12 个 event_code 取自 §5.1.1，
 与 frontend/src/utils/tracker.js 上报的是同一套 —— 所以造出来的日志能直接喂大屏，
@@ -24,7 +28,16 @@
   不是按 event_time 那串 UTC 字面量切 —— 两者差 8 小时，早班那批会跑到前一天去。
 · 脏数据**只落在非漏斗事件上**：漏斗四段（view_home → login → query_* →
   order_package）一条都不能改脏。把某会话的 login 改脏，那个会话就等于没登录过，
-  大屏漏斗会出现「查询 > 登录」这种往上翘的一级。
+  大屏漏斗会出现「查询 > 登录」这种往上翘的一级。脚本末尾有会话级漏斗自检，
+  不满足「逐段不增」直接报错退出，不会悄悄产出一份错数据。
+· 游客会话**单独造**（--guest-sessions，默认 20000）：游客的 view_home 行
+  user_id 为 null，其中 --guest-convert（默认 0.05）比例的会话随后 login
+  转成真实用户会话。登录用户会话一律 login 打头，**只靠它们漏斗第一段永远
+  小于第二段** —— 游客是漏斗第一段的唯一来源，删不得。
+· 登录用户按**活跃档位**生成（HIGH / MID / LOW）：先定注册日，再按档位以
+  「次日 / 第 7 日 / 其他日」三个回访概率决定后续来不来。旧版「每人凑满
+  100 条、日期均匀随机」的后果是人人天天在线 —— 活跃度只有一层、留存
+  90% 以上，图表照样画出来，但什么也说明不了。
 · 重复上报是**逐字复制**一行，连 event_time 一起复制 —— 明细表唯一索引是
   uk_event(event_id, event_date)，跨天复制不撞索引，等于没造出「重复」。
 
@@ -65,6 +78,9 @@ FUNNEL_EVENTS = frozenset((
     'query_balance', 'query_bill', 'query_usage',
     'order_package',
 ))
+
+#: 漏斗第三段「查询」由三个查询事件合并而成（前端 FUNNEL_STEP 里的 query）。
+QUERY_EVENTS = frozenset(('query_balance', 'query_bill', 'query_usage'))
 
 #: 单个会话里的动作池与权重。login / logout 不在池里 —— 它们是会话的
 #: 头尾，由 session_events() 单独加，混进池子会出现「登录了两次」。
@@ -131,6 +147,32 @@ SESSION_ACTIONS = (1, 7)
 #: 会话以「正常退出」收尾的概率；否则就是直接关掉（没有 logout 事件）
 LOGOUT_RATIO = 0.55
 
+#: 用户活跃档位：
+#: (档位名, 权重, 注册当天会话数, 回访日会话数, 次日回访率, 第 7 日回访率, 其他日回访率)
+#:
+#: 三个回访概率是**留存曲线的直接来源**：d1 留存 ≈ 三档 p1 的加权平均（约 47%），
+#: d7 ≈ p7 的加权平均（约 27%）。改这里等于改图上那两条线。
+#: 「注册当天会话数」与回访次数一起决定每人总条数，进而决定活跃度分层：
+#:   LOW  只来注册那天、1 个会话 → 通常不到 10 条
+#:   MID  偶尔回访             → 十几到几十条
+#:   HIGH 大部分日子都回来      → 上百条
+ACTIVITY_TIERS = (
+    ('HIGH', 30, (3, 4), (2, 3), 0.80, 0.55, 0.55),
+    ('MID',  45, (1, 2), (1, 2), 0.45, 0.20, 0.12),
+    ('LOW',  25, (1, 1), (1, 1), 0.10, 0.05, 0.03),
+)
+
+#: 游客会话（没有账号、不登录）的归属地。游客没有 user 记录，漏斗第一段
+#: 的 region 维度只能写固定值；上海市是项目演示的主场景。
+GUEST_REGION = '上海市'
+
+#: 游客登录前能逛的页面 —— 只放不需要账号的「套餐 / 活动」两个入口。
+#: 首页 view_home 由 guest_session() 打头，不在池子里。
+GUEST_ACTION_WEIGHTS = (
+    ('view_package_list', 55),
+    ('view_promo', 45),
+)
+
 # --- 脏数据 -------------------------------------------------------------
 
 #: 判脏规则与注入比例（**占入库总行数**）——《开发文档》§5.4。
@@ -175,6 +217,34 @@ def iso(dt):
     return u.strftime('%Y-%m-%dT%H:%M:%S.') + '%03dZ' % (u.microsecond // 1000)
 
 
+def parse_iso(s):
+    """把 iso() 写出的 UTC 串解析回带时区的 datetime。"""
+    return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S.%fZ').replace(
+        tzinfo=timezone.utc)
+
+
+def shift_into_day(events, day):
+    """
+    会话若跨过北京午夜，整体前移，保证每一行都落在 day 这一天。
+
+    ⚠️ 不处理的话，23:50 开的会话会溢到第二天 —— `--end` 默认昨天，
+       产出里就凭空多出一个「今天」的日志文件，和「今天归实时链路写」
+       的口径打架，批量链路还会把这份不完整的当天数据当一天去算。
+       也不能只丢掉溢出的几行：会话尾巴上的查询/办理一丢，漏斗后两段
+       就凭空少一截。所以整段往前挪，会话结构保持不变。
+    """
+    last = parse_iso(events[-1]['event_time'])
+    day_start = datetime(day.year, day.month, day.day, tzinfo=CHINA_TZ)
+    overflow = (last - (day_start + timedelta(days=1))).total_seconds() + 1
+    if overflow <= 0:
+        return
+    delta = timedelta(seconds=overflow)
+    for ev in events:
+        t = parse_iso(ev['event_time']) - delta
+        ev['event_time'] = iso(t)
+        ev['_day'] = t.astimezone(CHINA_TZ).date().isoformat()
+
+
 def pick(rng, pairs):
     """按权重取一个值。pairs 形如 ((值, 权重), (值, 权重), ...)。"""
     values = [p[0] for p in pairs]
@@ -188,6 +258,14 @@ def rand_ip(rng):
         rng.randint(1, 223), rng.randint(0, 255),
         rng.randint(0, 255), rng.randint(1, 254),
     )
+
+
+def session_start(rng, day):
+    """在某天按 24 小时活跃权重抽一个会话起始时刻（北京时间）。"""
+    hour = rng.choices(range(24), weights=HOUR_WEIGHTS, k=1)[0]
+    return datetime(day.year, day.month, day.day, hour,
+                    rng.randint(0, 59), rng.randint(0, 59),
+                    rng.randint(0, 999) * 1000, tzinfo=CHINA_TZ)
 
 
 # ===========================================================================
@@ -261,29 +339,137 @@ def session_events(rng, user, session_id, start_dt, ticket_counter):
         })
         # 一个动作到下一个动作隔几秒到几分钟
         t += timedelta(seconds=rng.randint(5, 240))
+    shift_into_day(events, start_dt.date())
     return events
 
 
-def build_events_for_user(rng, user, total, days, end_day, ticket_counter):
+def build_events_for_user(rng, user, days, end_day, ticket_counter):
     """
-    给一个用户造 total 条记录。
+    按「注册日 + 回访概率」给一个用户造行为。
 
-    做法：反复开新会话直到凑够 total 条，最后一批多余的直接截断。
-    截断只会砍掉末尾那一段，前面的会话结构仍是完整的（login 打头）。
+    注册日存在 users.json（窗口内均匀分布），先抽活跃档位，再逐日决定来不来：
+    注册当天必来，之后第 1 天按 p1、第 7 天按 p7、其余日子按 p_other 回访。
+    每个活跃日开 1—3 个会话，会话内部仍是 login → 动作 → (可能) logout。
+
+    ⚠️ 注册日靠后的用户没有足够的「明天」可回访，d1 / d7 天然算不出来 ——
+       这不是数据缺了，而是「还没到那天」，后端必须留 null、不能补 0。
     """
+    _, _, reg_sessions, back_sessions, p1, p7, p_other = rng.choices(
+        ACTIVITY_TIERS, weights=[t[1] for t in ACTIVITY_TIERS], k=1)[0]
+    reg_day = datetime.strptime(user['register_date'], '%Y-%m-%d').date()
+    reg_offset = (end_day - reg_day).days
+
     events = []
-    while len(events) < total:
-        day = end_day - timedelta(days=rng.randrange(days))
-        hour = rng.choices(range(24), weights=HOUR_WEIGHTS, k=1)[0]
-        start = datetime(day.year, day.month, day.day, hour,
-                         rng.randint(0, 59), rng.randint(0, 59),
-                         rng.randint(0, 999) * 1000, tzinfo=CHINA_TZ)
-        sid = str(uuid.UUID(int=rng.getrandbits(128)))
-        events.extend(session_events(rng, user, sid, start, ticket_counter))
-    events = events[:total]
+    for n in range(reg_offset + 1):
+        if n == 0:
+            n_sessions = rng.randint(*reg_sessions)
+        else:
+            p = p1 if n == 1 else (p7 if n == 7 else p_other)
+            if rng.random() >= p:
+                continue
+            n_sessions = rng.randint(*back_sessions)
+
+        day = reg_day + timedelta(days=n)
+        for _ in range(n_sessions):
+            sid = str(uuid.UUID(int=rng.getrandbits(128)))
+            events.extend(session_events(
+                rng, user, sid, session_start(rng, day), ticket_counter))
+
     # 按时间排一遍 —— 会话是按随机的天/点开的，不排的话日志里时间乱跳
     events.sort(key=lambda e: e['event_time'])
     return events
+
+
+def guest_session(rng, users, users_by_id, active_by_day, session_id, start_dt,
+                  ticket_counter, convert_ratio):
+    """
+    生成一个游客会话：view_home →（可能逛套餐/活动）→（可能）login 转正式会话。
+
+    游客行的 user_id 是 None（落盘成 null）。漏斗按**会话数**统计，不登录的
+    游客止步第一段，第一段才可能大于第二段。转登录后沿用**同一个 session_id**
+    ——换成新 id 的话这个会话就只算过「访问」、没算过「登录」，等于没转化。
+    region / device / ip 从登录那一刻起换成用户自己的，和真实登录一致。
+
+    ⚠️ 转化对象**只能从「当天本来就有行为的用户」里挑**（其次才是当天
+       已注册的用户）。挑完全随机的人等于给每个人凭空加一天活跃 ——
+       20 000 个游客会话 × 35% ≈ 7 000 次登录摊到 500 人头上，
+       人均每天一次，活跃度与留存立刻又退化成「人人天天在线」。
+
+    返回 (事件列表, 是否发生了登录转化)。
+    """
+    device = pick(rng, DEVICES)
+    ip = rand_ip(rng)
+    events = []
+    t = start_dt
+
+    def emit(code, user):
+        nonlocal t
+        ext = None
+        if code == 'order_package':
+            ext = {'package_id': pick(rng, PACKAGE_WEIGHTS)}
+        elif code == 'submit_ticket':
+            ticket_counter[0] += 1
+            ext = {'ticket_id': 90000 + ticket_counter[0]}
+
+        events.append({
+            'event_id': str(uuid.UUID(int=rng.getrandbits(128))),
+            'event_code': code,
+            'event_time': iso(t),
+            'user_id': user['user_id'] if user else None,
+            'session_id': session_id,
+            'page': EVENT_PAGE[code],
+            'region': user['region'] if user else GUEST_REGION,
+            'device': user['device'] if user else device,
+            'ip': user['ip'] if user else ip,
+            'ext': ext,
+            '_day': t.date().isoformat(),
+        })
+        t += timedelta(seconds=rng.randint(5, 240))
+
+    emit('view_home', None)
+    for _ in range(rng.randint(0, 2)):
+        emit(pick(rng, GUEST_ACTION_WEIGHTS), None)
+
+    day_iso = start_dt.date().isoformat()
+    pool = active_by_day.get(day_iso)
+    if pool:
+        user = users_by_id[rng.choice(tuple(pool))]
+    else:
+        eligible = [u for u in users if u['register_date'] <= day_iso]
+        user = rng.choice(eligible) if eligible else None
+    converted = user is not None and rng.random() < convert_ratio
+    if converted:
+        emit('login', user)
+        for _ in range(rng.randint(*SESSION_ACTIONS)):
+            emit(pick(rng, ACTION_WEIGHTS), user)
+        if rng.random() < LOGOUT_RATIO:
+            emit('logout', user)
+    shift_into_day(events, start_dt.date())
+    return events, converted
+
+
+def build_guest_sessions(rng, users, users_by_id, active_by_day, count, days,
+                         end_day, ticket_counter, convert_ratio):
+    """
+    造 count 个游客会话，起始时间与登录用户同样按「随机一天 + 小时峰谷」抽。
+
+    游客行是**额外**的，不计入登录用户的行为 —— 混进来会搅乱活跃度分层
+    与留存 cohort（游客没有稳定的注册日，不属于任何 cohort）。
+
+    返回 (事件列表, 登录转化会话数)。
+    """
+    events = []
+    n_converted = 0
+    for _ in range(count):
+        day = end_day - timedelta(days=rng.randrange(days))
+        sid = str(uuid.UUID(int=rng.getrandbits(128)))
+        evs, converted = guest_session(
+            rng, users, users_by_id, active_by_day, sid,
+            session_start(rng, day), ticket_counter, convert_ratio)
+        events.extend(evs)
+        n_converted += int(converted)
+    events.sort(key=lambda e: e['event_time'])
+    return events, n_converted
 
 
 # ===========================================================================
@@ -390,7 +576,34 @@ def inject_dirty(rng, rows, dirty_ratio):
 
 
 # ===========================================================================
-# 五、入口
+# 五、漏斗自检
+# ===========================================================================
+
+def check_funnel(rows):
+    """
+    会话级漏斗自检：view_home → login → query_* → order_package 逐段不增。
+
+    按 session_id **去重**计数，不是按事件条数 —— 同一个人在一个会话里
+    查了三次话费，漏斗第三段仍然只算 1；大屏后端也是这么聚集的。
+    返回四段的会话数。
+    """
+    home, login, query, order = set(), set(), set(), set()
+    for ev in rows:
+        sid = ev['session_id']
+        code = ev['event_code']
+        if code == 'view_home':
+            home.add(sid)
+        elif code == 'login':
+            login.add(sid)
+        elif code in QUERY_EVENTS:
+            query.add(sid)
+        elif code == 'order_package':
+            order.add(sid)
+    return len(home), len(login), len(query), len(order)
+
+
+# ===========================================================================
+# 六、入口
 # ===========================================================================
 
 def main():
@@ -404,8 +617,6 @@ def main():
     ap = argparse.ArgumentParser(
         description='模拟用户访问脚本 —— 造模拟用户 + 行为日志（操作记录 + 脏数据）')
     ap.add_argument('--users', type=int, default=500, help='模拟用户数（默认 500）')
-    ap.add_argument('--events-per-user', type=int, default=100,
-                    help='每个用户的操作记录条数（默认 100）')
     ap.add_argument('--days', type=int, default=14,
                     help='回溯天数（默认 14；7 日留存至少要 14 天）')
     ap.add_argument('--end', default=None,
@@ -414,14 +625,22 @@ def main():
     ap.add_argument('--seed', type=int, default=20261010, help='随机种子，同种子可复现')
     ap.add_argument('--dirty', type=float, default=0.08,
                     help='脏数据占比（占入库总行数，默认 0.08；给 0 则不注入）')
+    ap.add_argument('--guest-sessions', type=int, default=20000,
+                    help='游客会话数（默认 20000；漏斗第一段只由它们贡献，给 0 会自检失败）')
+    ap.add_argument('--guest-convert', type=float, default=0.05,
+                    help='游客会话转登录的比例（默认 0.05；调高会抹平活跃度分层）')
     args = ap.parse_args()
 
-    if args.events_per_user < 1:
-        ap.error('--events-per-user 至少为 1')
+    if args.users < 1:
+        ap.error('--users 至少为 1')
     if args.days < 1:
         ap.error('--days 至少为 1')
     if not 0 <= args.dirty < 1:
         ap.error('--dirty 取值范围 [0, 1)')
+    if args.guest_sessions < 0:
+        ap.error('--guest-sessions 不能为负')
+    if not 0 <= args.guest_convert <= 1:
+        ap.error('--guest-convert 取值范围 [0, 1]')
 
     rng = random.Random(args.seed)
     end_day = (datetime.strptime(args.end, '%Y-%m-%d').date() if args.end
@@ -432,22 +651,63 @@ def main():
     users = build_users(rng, args.users)
     for u in users:
         u['ip'] = rand_ip(rng)
+        # 注册日：窗口内均匀分布，是留存 cohort 的锚点，也是「注册前不能登录」
+        # 这条约束的依据（游客转化只从当天及之前已注册的用户里挑）。
+        u['register_date'] = (
+            end_day - timedelta(days=rng.randrange(args.days))
+        ).isoformat()
 
     # --- 逐个用户造日志，先攒成一个平铺的列表 ---
-    rows = []
+    user_rows = []
     ticket_counter = [0]
     for u in users:
-        rows.extend(build_events_for_user(
-            rng, u, args.events_per_user, args.days, end_day, ticket_counter))
+        user_rows.extend(build_events_for_user(
+            rng, u, args.days, end_day, ticket_counter))
 
-    base_rows = len(rows)
+    # 每人条数自检只数**用户自己的行** —— 游客转化后也会带 user_id，
+    # 混进来会把这批用户算成「活跃度虚高」
     per_user = {}
-    for ev in rows:
+    for ev in user_rows:
         per_user[ev['user_id']] = per_user.get(ev['user_id'], 0) + 1
+    counts = [per_user.get(u['user_id'], 0) for u in users]
+    missing = [u['user_id'] for u in users if per_user.get(u['user_id'], 0) == 0]
+    hi = sum(1 for c in counts if c >= 50)
+    mid = sum(1 for c in counts if 10 <= c < 50)
+    lo = sum(1 for c in counts if c < 10)
+    print('[自检] 每个用户都有行为 %s（%d 人；条数 %d—%d，人均 %.1f）'
+          % ('✅' if not missing else '❌ %d 人没有' % len(missing),
+             len(counts), min(counts), max(counts), sum(counts) / len(counts)))
+    print('[自检] 活跃度分层预演（≥50 / 10—49 / <10）：%d / %d / %d'
+          % (hi, mid, lo))
+    if missing:
+        sys.exit(1)
+
+    # --- 游客会话：额外的行，漏斗第一段的来源 ---
+    # 转化目标只从「当天本来就有行为的用户」里挑，避免凭空增加活跃日
+    users_by_id = {u['user_id']: u for u in users}
+    active_by_day = {}
+    for ev in user_rows:
+        active_by_day.setdefault(ev['_day'], set()).add(ev['user_id'])
+
+    guest_rows, n_converted = build_guest_sessions(
+        rng, users, users_by_id, active_by_day, args.guest_sessions,
+        args.days, end_day, ticket_counter, args.guest_convert)
+
+    rows = user_rows + guest_rows
+    base_rows = len(rows)
 
     # --- 注入脏数据 ---
     hits, n_dup = inject_dirty(rng, rows, args.dirty)
     total_rows = len(rows)
+
+    # --- 漏斗自检：注入后仍须逐段不增，否则不落盘、直接退出 ---
+    f_home, f_login, f_query, f_order = check_funnel(rows)
+    funnel_ok = f_home >= f_login >= f_query >= f_order
+    print('[漏斗自检] 访问 %d → 登录 %d → 查询 %d → 办理 %d 会话 %s'
+          % (f_home, f_login, f_query, f_order,
+             '✅' if funnel_ok else '❌ 不是逐段不增，已中止，未覆盖输出目录'))
+    if not funnel_ok:
+        sys.exit(1)
 
     # --- 落盘：按**北京日期**归堆，不是按 event_time 那串 UTC 字面量 ---
     # 否则北京时间 09-27 早上 7 点那批会被分进 09-26 的文件里。
@@ -470,12 +730,13 @@ def main():
 
     # --- 简报 ---
     print('[用户] %d 个 → %s' % (args.users, users_path))
-    print('[日志] 每人 %d 条 × %d 人 = %d 条基础记录'
-          % (args.events_per_user, args.users, base_rows))
-    bad = [uid for uid, n in per_user.items() if n != args.events_per_user]
-    print('[自检] 注入前每人条数 %s'
-          % ('全部等于 %d ✅' % args.events_per_user if not bad
-             else '有 %d 个用户不是 %d 条 ❌' % (len(bad), args.events_per_user)))
+    print('[日志] 用户行为 %d 条（%d 人，人均 %.1f 条）'
+          % (len(user_rows), args.users, len(user_rows) / args.users))
+    print('[日志] 游客 %d 个会话 → %d 条（登录转化 %d 个，%.1f%%）'
+          % (args.guest_sessions, len(guest_rows), n_converted,
+             (100.0 * n_converted / args.guest_sessions
+              if args.guest_sessions else 0.0)))
+    print('[日志] 基础记录合计 %d 条' % base_rows)
 
     if args.dirty > 0:
         n_mut = sum(v for k, v in hits.items() if k != 'DUPLICATE')

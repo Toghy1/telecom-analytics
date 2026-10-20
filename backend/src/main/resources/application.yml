@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    # 本地 MySQL 8；库由 db/schema.sql 创建，数据由 etl/etl.py 灌入。
+    # 口令可用环境变量覆盖，默认值是本机演示库的弱口令。
+    url: jdbc:mysql://127.0.0.1:3306/demo01?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${DEMO01_DB_PASSWORD:123456}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+logging:
+  level:
+    com.demo01.analysis: info
