@@ -1,0 +1,68 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: business-service
+
+  # 与 analysis-service 同一个库（决策「业务数据模型」：业务 7 表与行为 4 表共库不同区）。
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/demo01?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${DEMO01_DB_PASSWORD:123456}
+    hikari:
+      maximum-pool-size: 10
+
+  # 跨接口 JSON 一律 snake_case（选型⑤纪律）。放在全局而不是逐个字段加
+  # @JsonProperty：漏标一个字段不会报错，只会让前端某个 `xxx_yyy` 读到 undefined，
+  # 页面安静地显示空白——这类错误最难发现。全局策略漏不了。
+  # 出参（VO/实体）与入参（DTO）**双向**生效，前端 `package_id` 能直接绑到 `packageId`。
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+  kafka:
+    # Kafka 3.9.1 KRaft，跑在 192.168.23.101（决策「Kafka/Flink 集群拓扑」）。
+    # advertised.listeners 配的是 IP，所以这里必须写 IP，不能写 localhost。
+    bootstrap-servers: 192.168.23.101:9092
+    producer:
+      # 埋点原文以字符串投递：消费端要拿**原始 JSON 文本**写死信表
+      # （dwd_behavior_dirty.raw_content），反序列化成对象再序列化回去会丢字段。
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      properties:
+        linger.ms: 20
+    properties:
+      # broker 不可达时别让埋点线程一直挂着：3 秒拿不到元数据就放弃，
+      # 由 TrackController 吞掉异常。埋点是旁路，不能拖慢用户操作。
+      request.timeout.ms: 3000
+      max.block.ms: 3000
+
+mybatis-plus:
+  configuration:
+    # 下划线列名 → camelCase 属性（`package_id` → `packageId`）。
+    # ⚠️ 这是**后端内部**的映射，REST 出参仍走 VO 的 snake_case 命名
+    #    （选型⑤纪律：跨接口 JSON 一律 snake_case）。
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # 建表 SQL 用 AUTO_INCREMENT，而 MyBatis-Plus 默认是雪花算法 ASSIGN_ID。
+      # 不显式改这一项，插入时主键会变成一个 19 位雪花数，而自增列被忽略——
+      # 程序不报错，只是 id 与数据库里已有的 1001..1500 完全不在一个量级
+      #（选型②「三处默认行为与既有表设计方向相反」之一）。
+      id-type: auto
+
+demo01:
+  kafka:
+    topic: behavior-log
+
+  jwt:
+    # ⚠️ 演示用固定密钥，**不得用于生产**。生产应改为环境变量注入。
+    #    HS256 要求密钥 ≥ 32 字节，短了 jjwt 会在签发时直接抛 WeakKeyException。
+    secret: demo01-p1-telecom-behavior-analysis-jwt-secret-2026
+    # token 有效期（分钟）。与 TokenStore 的过期清理同一口径。
+    ttl-minutes: 120
+
+logging:
+  level:
+    com.demo01.business: info
