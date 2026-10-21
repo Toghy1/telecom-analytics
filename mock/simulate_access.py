@@ -13,6 +13,12 @@
     users.json                 500 个用户：id / 手机号 / 归属地 / 套餐 / 注册日
     behavior_YYYY-MM-DD.jsonl  按天切分的行为日志：登录用户行为 + 游客会话
 
+加 --track 时**额外**做一件事：把脏行（按 7 条规则轮转取样）逐条 POST 到
+埋点接口 `POST /api/track`，走实时链路 → 死信表 `source='REALTIME'`。
+这就是《开发文档》§5.4 说的「双通道注入」——同一批脏数据既落文件走离线，
+也过一次实时清洗，让实时侧那段判脏代码有真实运行记录。**只投脏行**，
+原因是干净行的 event_id 已被离线 ETL 入库，重投只会被判成 DUPLICATE。
+
 字段严格对齐《开发文档》§5.1.2 的 10 个公共字段，12 个 event_code 取自 §5.1.1，
 与 frontend/src/utils/tracker.js 上报的是同一套 —— 所以造出来的日志能直接喂大屏，
 不需要在 Spark 里做字段名转换。
@@ -49,6 +55,7 @@ import json
 import os
 import random
 import sys
+import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -542,14 +549,19 @@ def foul(rng, row, rule, now):
 
 def inject_dirty(rng, rows, dirty_ratio):
     """
-    就地注入脏数据，并把重复行追加进 rows。返回 (各规则命中数, 重复行数)。
+    就地注入脏数据，并把重复行追加进 rows。
+    返回 (各规则命中数, 重复行数, 脏行清单)。
+
+    脏行清单是 [(规则名, 行), ...]，**只给 --track 用**，不参与落盘 ——
+    落盘始终是整份 rows，脏行本来就混在里面。
 
     改脏只在**非漏斗事件**里挑，重复行也只在**没被改脏**的行里挑 ——
     复制一行已经被 null 掉 event_id 的行，造出来的「重复」名不副实。
     """
     hits = {name: 0 for name, _ in DIRTY_RULES}
+    dirty_rows = []
     if dirty_ratio <= 0:
-        return hits, 0
+        return hits, 0, dirty_rows
 
     _, counts = plan_dirty(len(rows), dirty_ratio)
     eligible = [r for r in rows if r['event_code'] not in FUNNEL_EVENTS]
@@ -565,14 +577,17 @@ def inject_dirty(rng, rows, dirty_ratio):
         take = to_mutate[cursor:cursor + counts[name]]
         for row in take:
             foul(rng, row, name, now)
+            dirty_rows.append((name, row))
         hits[name] = len(take)
         cursor += len(take)
 
     n_dup = min(counts['DUPLICATE'], len(clean_rest))
     for row in rng.sample(clean_rest, n_dup):
-        rows.append(dict(row))    # 逐字复制，连 event_time 和 _day 一起
+        copy = dict(row)          # 逐字复制，连 event_time 和 _day 一起
+        rows.append(copy)
+        dirty_rows.append(('DUPLICATE', copy))
     hits['DUPLICATE'] = n_dup
-    return hits, n_dup
+    return hits, n_dup, dirty_rows
 
 
 # ===========================================================================
@@ -603,7 +618,59 @@ def check_funnel(rows):
 
 
 # ===========================================================================
-# 六、入口
+# 六、实时通道投递（--track）
+# ===========================================================================
+
+def track_dirty(rng, dirty_rows, url, limit, timeout=5.0):
+    """
+    把脏行逐条 POST 到埋点接口，走完「Kafka → 实时清洗 → 死信表」。
+
+    ⚠️ **只投脏行，一条干净行都不投**。干净行的 event_id 早已被离线 ETL
+       写进 dwd_behavior_log，再投一遍会被规则⑥判成 DUPLICATE —— 死信表里
+       平白多出一批「重复」，看着像实时链路出了问题，实际是脚本自己重放
+       了一遍。脏行则必然被某条规则拦下，不会多插一行明细。
+
+    取样按**规则轮转**而不是整体随机抽：随机抽 70 条时，占比 0.5% 的
+    「超长乱码」很可能一条都抽不到，死信页就少了一种失败原因。
+
+    返回 (实际投递的 [(规则名, 行), ...], 成功数, 失败数, 首个异常)。
+    """
+    pools = {name: [] for name, _ in DIRTY_RULES}
+    for name, row in dirty_rows:
+        pools[name].append(row)
+    for name in pools:
+        rng.shuffle(pools[name])
+
+    order = [name for name, _ in DIRTY_RULES]
+    picked = []
+    cursor = 0
+    while len(picked) < limit and any(pools.values()):
+        name = order[cursor % len(order)]
+        if pools[name]:
+            picked.append((name, pools[name].pop()))
+        cursor += 1
+
+    ok, failed, first_error = 0, 0, None
+    for _, row in picked:
+        # `_day` 是脚本内部的归堆标记，不属于埋点协议，不能外发
+        payload = {k: v for k, v in row.items() if not k.startswith('_')}
+        body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+        req = urllib.request.Request(
+            url, data=body, method='POST',
+            headers={'Content-Type': 'application/json'})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                resp.read()
+            ok += 1
+        except Exception as exc:                      # 网络不通 / 服务没起
+            failed += 1
+            first_error = first_error or exc
+
+    return picked, ok, failed, first_error
+
+
+# ===========================================================================
+# 七、入口
 # ===========================================================================
 
 def main():
@@ -629,6 +696,12 @@ def main():
                     help='游客会话数（默认 20000；漏斗第一段只由它们贡献，给 0 会自检失败）')
     ap.add_argument('--guest-convert', type=float, default=0.05,
                     help='游客会话转登录的比例（默认 0.05；调高会抹平活跃度分层）')
+    ap.add_argument('--track', action='store_true',
+                    help='造完数据后把脏行 POST 到埋点接口，走实时链路（需先起 business 8082）')
+    ap.add_argument('--track-url', default='http://127.0.0.1:8082/api/track',
+                    help='埋点接口地址（默认 http://127.0.0.1:8082/api/track）')
+    ap.add_argument('--track-limit', type=int, default=70,
+                    help='投递条数上限，按规则轮转取样（默认 70 = 每条规则 10 条）')
     args = ap.parse_args()
 
     if args.users < 1:
@@ -641,6 +714,10 @@ def main():
         ap.error('--guest-sessions 不能为负')
     if not 0 <= args.guest_convert <= 1:
         ap.error('--guest-convert 取值范围 [0, 1]')
+    if args.track and args.dirty <= 0:
+        ap.error('--track 需要 --dirty > 0（没有脏行可投）')
+    if args.track and args.track_limit < 1:
+        ap.error('--track-limit 至少为 1')
 
     rng = random.Random(args.seed)
     end_day = (datetime.strptime(args.end, '%Y-%m-%d').date() if args.end
@@ -697,7 +774,7 @@ def main():
     base_rows = len(rows)
 
     # --- 注入脏数据 ---
-    hits, n_dup = inject_dirty(rng, rows, args.dirty)
+    hits, n_dup, dirty_rows = inject_dirty(rng, rows, args.dirty)
     total_rows = len(rows)
 
     # --- 漏斗自检：注入后仍须逐段不增，否则不落盘、直接退出 ---
@@ -708,6 +785,25 @@ def main():
              '✅' if funnel_ok else '❌ 不是逐段不增，已中止，未覆盖输出目录'))
     if not funnel_ok:
         sys.exit(1)
+
+    # --- 实时通道投递（可选）：脏行 → 埋点接口 → Kafka → 实时清洗 → 死信表 ---
+    # 放在落盘之前、漏斗自检之后：自检不过的数据没必要投进实时链路，
+    # 而投递失败只报警不中止 —— 离线文件照常产出，两条通道互不拖累。
+    if args.track:
+        picked, ok, failed, first_error = track_dirty(
+            rng, dirty_rows, args.track_url, args.track_limit)
+
+        per_rule = {}
+        for name, _ in picked:
+            per_rule[name] = per_rule.get(name, 0) + 1
+
+        print('[实时] 投递 %d 条脏行 → %s（成功 %d / 失败 %d）'
+              % (len(picked), args.track_url, ok, failed))
+        print('        ' + '  '.join(
+            '%s=%d' % (n, c) for n, c in per_rule.items()))
+        if failed:
+            print('        ❌ 首个错误：%s' % first_error)
+            print('        检查 business 服务是否已起（8082）、Kafka 是否可达')
 
     # --- 落盘：按**北京日期**归堆，不是按 event_time 那串 UTC 字面量 ---
     # 否则北京时间 09-27 早上 7 点那批会被分进 09-26 的文件里。
