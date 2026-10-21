@@ -92,8 +92,20 @@ public class ScreenService {
     /* ---------------- 子页 · 管道聚合 ---------------- */
 
     public PipelineSummary summary() {
+        // ⚠️ 锚点取**离线批次的统计日**（dws_metric_offline 的 MAX(stat_date)），
+        //    不能取 MAX(dwd_behavior_log.event_date)。
+        //
+        //    2026-10-21 实时链路接通后暴露的坑：实时埋点也写 dwd_behavior_log，
+        //    而 dwd_behavior_log 里没有任何「这是第几批」的信息。只要当天有人
+        //    打开过大屏，MAX(event_date) 就跳到今天，而今天**没有离线脏数据**
+        //    （离线批次只跑到 10-19），于是「规则命中分布」七条全 0、
+        //    「入库率」变成 100%——图看着正常，数字全是假的。
+        //
+        //    子页讲的是**批量管道**（采集 → 入库 / 判脏），它的「最后一期」
+        //    只能是 Spark / ETL 的批次日；实时通道的脏行在死信页按
+        //    source=REALTIME 单独查看。
         LocalDate latest = jdbc.queryForObject(
-                "SELECT MAX(event_date) FROM dwd_behavior_log", LocalDate.class);
+                "SELECT MAX(stat_date) FROM dws_metric_offline", LocalDate.class);
         if (latest == null) {
             return new PipelineSummary(null, emptyRuleHits(),
                     List.of(), List.of());
