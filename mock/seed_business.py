@@ -304,10 +304,21 @@ def build_sql():
             "user_id, usage_month, used_data, used_voice, used_sms, create_time"),
         "",
 
+        # 陷阱④：停用账号。
+        #   管理后台的「停用」筛选与「启用」动作需要一条真实数据——若 502 个
+        #   账号全是 status=1，那个筛选演示时永远空表，分不清是「筛对了」还是
+        #   「status 参数被丢掉」（决策「假数据必须能证伪过滤条件」）。总行数
+        #   仍是 502，只是其中一条被停用。
+        #   ⚠️ 必须放在最后：etl.py / Flink `--seed` 会把这 500 个用户整批重灌成
+        #      status=1，本语句只有在那之后执行才留得住。
+        "UPDATE t_account SET status = 0 WHERE id = 1500;",
+        "",
+
         "COMMIT;",
         "",
         "-- 自检：下面几条 COUNT 应与注释里的数字一致。",
-        "-- 账号 3（1001/2001/3001）；1001 的 package_id 应为 2、balance 68.50",
+        "-- 账号 3（1001/2001/3001）+ 500 个造数用户（其中 1500 被停用）；"
+        "1001 的 package_id 应为 2、balance 68.50",
         "SELECT id, login_name, role, package_id, balance FROM t_account "
         f"WHERE id IN ({DEMO_USER_ID}, {ANALYST_ID}, {ADMIN_ID});",
         "-- 进行中的活动应为 3 条（id 1 / 2 / 5）",
