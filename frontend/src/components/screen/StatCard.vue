@@ -59,7 +59,7 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: #8fa6cc;
   letter-spacing: 0.5px;
 }
@@ -80,14 +80,14 @@ defineProps({
 
 .stat__num {
   font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', sans-serif;
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: 1px;
 }
 
 .stat__unit {
-  font-size: 12px;
+  font-size: 14px;
   color: #8fa6cc;
 }
 </style>

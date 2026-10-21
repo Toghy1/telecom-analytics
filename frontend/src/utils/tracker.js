@@ -18,6 +18,8 @@
  *    **不需要**在调用点判断角色。
  */
 
+import { postTrack } from '@/api/track'
+
 const USER_KEY = 'demo01_user'
 const SESSION_KEY = 'demo01_session_id'
 
@@ -145,11 +147,11 @@ function send(payload) {
   // 先过角色闸：运营分析员与系统管理员不产生行为数据（角色表）。
   if (!producesBehaviorData()) return
 
-  // TODO(后端接口就绪后接入)：POST 到 business 的埋点上报接口。
-  //   接口路径属于《开发文档》§12「接口清单」待定项，尚未决策。
-  //   目标形态是「埋点直发 Kafka」；接口本身**不做业务校验**，
-  //   只检查 JSON 可解析性，格式合法但内容有问题的数据一律放行，
-  //   交由实时消费服务按 7 条规则判脏。
+  // 「埋点直发 Kafka」：business-service 只检查 JSON 可解析性，不做业务校验，
+  // 内容有问题的数据一律放行，由 realtime-service 按 7 条规则判脏后进死信表。
+  // 即发即忘——埋点失败不能影响用户操作，详见 `api/track.js`。
+  postTrack(payload)
+
   if (import.meta.env.DEV) {
     console.debug('[埋点]', payload)
   }

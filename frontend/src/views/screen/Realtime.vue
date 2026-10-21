@@ -1,19 +1,26 @@
 <script setup>
 /**
- * 分析平台 · 主页 · 用户行为分析（实时大屏四板块）。
+ * 分析平台 · 实时大屏（三个标签页的第一页）。
  *
- * 四板块构成见 claude.md 决策「大屏板块构成为四板块全选」：
- *   ① 实时核心指标区（实时链路）
- *   ② 实时趋势与热度（实时链路）
- *   ③ 转化与活跃（漏斗与留存为离线链路；时段热力图可实时）
- *   ④ 用户维度分布（离线链路）
+ * 2026-10-21 由 `Screen.vue` 拆出：原主页把实时（板块①②）与离线（板块③④）
+ * 画在同一屏上，拆成三个标签页后各页只取自己那半。拆分依据**不是我挑的**，
+ * 是每块图 `PanelBox` 上已有的 `link` 标签（`REALTIME` / `OFFLINE`）——
+ * 那份标签本来就在声明「这块数据来自哪条链路」，正好当分页判据。
+ *
+ * 本页 = 板块①② + 「24 小时时段热力图」：
+ *
+ *   - ①② 本来就是实时链路；
+ *   - 热力图的原生标签是 `REALTIME`（读 `dwd_behavior_log`、随今天的数据变），
+ *     与「页面热度 Top 10」是同一类查询，故一并留在这里，link 标签不动。
+ *     ⚠️ 它其实**两条链路都吃**：昨天及以前是离线 ETL 回填的，今天那些格子
+ *     是实时链路刚写进去的。这是唯一一处数据源跨越两条链路的图，属既知情况。
  *
  * ⚠️ **本页不上报任何埋点。**
  *    《开发文档》的角色表写明运营分析员「不产生行为数据」，且
  *    决策「统一日志规范」列出的十二个事件里**没有任何一个属于分析平台**。
  *    这不是遗漏，是刻意的：若给大屏加一个 `view_screen`，运营分析员看大屏
  *    的行为就会进行为日志，而日志又是大屏的分析对象——**系统开始观察自己**，
- *    指标会被这个自我观察污染。路由表里这两条路由也都没有 `meta.track`。
+ *    指标会被这个自我观察污染。路由表里三条大屏路由也都没有 `meta.track`。
  *
  * ⚠️ 本页**不用任何 Element Plus 组件**（选型⑤）。切换按钮、下拉都是自绘。
  */
@@ -31,25 +38,14 @@ import {
   getTrend,
   getPageHeat,
   getCategoryDist,
-  getFunnel,
-  getRetention,
-  getHourlyHeatmap,
-  getRegionDist,
-  getPackageDist,
-  getActivityDist
+  getHourlyHeatmap
 } from '@/api/screen'
 import {
   trendOption,
   categoryRingOption,
   pageHeatOption,
-  funnelOption,
-  heatmapOption,
-  retentionOption,
-  regionMapOption,
-  packagePieOption,
-  activityBarOption
+  heatmapOption
 } from '@/utils/screenCharts'
-import { ensureChinaMap } from '@/utils/chinaMap'
 import { floorToBucket, formatDateTime } from '@/utils/datetime'
 
 const router = useRouter()
@@ -96,34 +92,9 @@ function pageName(path) {
   return resolved?.meta?.title || path
 }
 
-/* ---------------- ③ 转化与活跃 ---------------- */
+/* ---------------- 24 小时时段热力图 ---------------- */
 
-const funnelMap = ref({})
 const heatmapData = ref({ days: [], series: [] })
-const retentionData = ref({ dates: [], d1: [], d7: [] })
-
-/* ---------------- ④ 用户维度分布 ---------------- */
-
-const regionRows = ref([])
-const packageRows = ref([])
-const activityRows = ref([])
-
-/**
- * 中国地图的 geoJSON 是否已注册进 ECharts。
- *
- * ⚠️ 这不是「加载中」的装饰状态，是**必须挡住崩溃**的开关。
- *    ECharts 的 `map` 系列在 setOption 时就要解析地图几何：
- *    `geoSourceManager.load()` 找不到已注册的地图会**返回 undefined**，
- *    紧接着 `MapSeries.getInitialData` 读 `geoSource.regions` 直接抛
- *    `Cannot read properties of undefined (reading 'regions')`。
- *    注意它**不是**「画个空白图」那么客气——抛在 SeriesModel.init 里，
- *    整个 setOption 挂掉，该图的 canvas 根本不会建出来。
- *
- *    所以「数据到了」与「地图注册好了」是两件事，两者都满足才能出 option。
- *    只判断数据的话，注册那 582 KB 的这段时间里必然崩——而且崩得挑时候：
- *    本地是快的，加载慢的机器或线上才现形。
- */
-const mapReady = ref(false)
 
 /* ---------------- 图表 option（都是 computed，数据一变图就变） ---------------- */
 
@@ -136,24 +107,8 @@ const categoryChartOption = computed(() =>
 const pageHeatChartOption = computed(() =>
   pageHeatRows.value.length ? pageHeatOption(pageHeatRows.value, pageName) : null
 )
-const funnelChartOption = computed(() =>
-  Object.keys(funnelMap.value).length ? funnelOption(funnelMap.value) : null
-)
 const heatmapChartOption = computed(() =>
   heatmapData.value.series.length ? heatmapOption(heatmapData.value) : null
-)
-const retentionChartOption = computed(() =>
-  retentionData.value.dates.length ? retentionOption(retentionData.value) : null
-)
-const regionChartOption = computed(() =>
-  // 两个条件缺一不可：没有数据是空图，没有地图**是崩溃**（见 mapReady 说明）。
-  mapReady.value && regionRows.value.length ? regionMapOption(regionRows.value) : null
-)
-const packageChartOption = computed(() =>
-  packageRows.value.length ? packagePieOption(packageRows.value) : null
-)
-const activityChartOption = computed(() =>
-  activityRows.value.length ? activityBarOption(activityRows.value) : null
 )
 
 /* ---------------- 趋势曲线的实时增量 ---------------- */
@@ -215,15 +170,13 @@ function applyRealtime(record) {
 let subscription = null
 
 onMounted(async () => {
-  // 并行取数：十来个请求串行做的话，大屏要一项一项地「长出来」。
-  const [snapshot, trend, heat, category, funnel, heatmap, retention] = await Promise.all([
+  // 并行取数：四个请求串行做的话，大屏要一项一项地「长出来」。
+  const [snapshot, trend, heat, category, heatmap] = await Promise.all([
     getRealtimeSnapshot(),
     getTrend(trendRange.value),
     getPageHeat(10),
     getCategoryDist(),
-    getFunnel(),
-    getHourlyHeatmap(),
-    getRetention()
+    getHourlyHeatmap()
   ])
 
   Object.assign(counters, toCounterMap(snapshot))
@@ -233,35 +186,7 @@ onMounted(async () => {
   lastPv = counters.today_pv ?? null
   pageHeatRows.value = heat
   categoryRows.value = category
-  funnelMap.value = funnel
   heatmapData.value = heatmap
-  retentionData.value = retention
-
-  // 板块④是三块离线指标，单独一批——它们不影响首屏实时部分的呈现速度
-  const [region, packages, activity] = await Promise.all([
-    getRegionDist(),
-    getPackageDist(),
-    getActivityDist()
-  ])
-  regionRows.value = region
-  packageRows.value = packages
-  activityRows.value = activity
-
-  // ⚠️ 地图必须**先注册再画**，且注册是异步的（要拉 582 KB 的 geoJSON）。
-  //    与上面那批并行发出去即可，不必串行等——真正的守卫是 `mapReady`：
-  //    数据与地图谁先到都无所谓，`regionChartOption` 两个条件都满足才出值，
-  //    EChart 组件收到 null 不绘制，注册完成后自动补上。
-  //
-  //    catch 里**必须往控制台留声**，不能吞。失败时「地域分布」会一直空着，
-  //    和「后端没返数据」长得一模一样；不打印的话，这个图上永远少一块，
-  //    而没有任何地方说明原因。
-  ensureChinaMap()
-    .then(() => {
-      mapReady.value = true
-    })
-    .catch((err) => {
-      console.error('[大屏] 地图加载失败，地域分布将不显示：', err)
-    })
 
   // 订上实时推送。SSE 的初值要单独拉（见 api/realtime.js），所以顺序是
   // 「先取快照、再订阅」，反过来的话第一帧会拿不到基线。
@@ -269,8 +194,11 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  // ⚠️ 不关订阅的后果：离开大屏后定时器还在跑，回调还在改一个已经卸载的
+  // ⚠️ 不关订阅的后果：离开本页后定时器还在跑，回调还在改一个已经卸载的
   //    组件的响应式状态——在 Vue 里不报错，只是白跑，且每次进出都多一个。
+  //
+  //    拆成三个标签页后，这一句的作用比原来更重要：原来切到子页是「换一页」，
+  //    现在三个 tab 之间来回点才是常态，漏关就会按访问次数累积订阅。
   subscription?.close()
   subscription = null
 })
@@ -284,14 +212,8 @@ watch(trendRange, async (range) => {
 <template>
   <ScreenLayout
     title="电信用户行为分析系统"
-    subtitle="实时大屏 · 用户在系统里做了什么"
+    subtitle="实时链路 · 此刻正在发生什么"
   >
-    <template #actions>
-      <router-link class="screen-link" to="/screen/pipeline">
-        系统运行分析 →
-      </router-link>
-    </template>
-
     <!-- ① 实时核心指标区 -->
     <div class="screen-row screen-row--stats">
       <StatCard
@@ -333,68 +255,30 @@ watch(trendRange, async (range) => {
       </PanelBox>
     </div>
 
-    <!-- ③ 转化与活跃 -->
+    <!-- 24 小时时段热力图：单独占一行，铺开才看得清格子 -->
     <div class="screen-row screen-row--charts">
-      <PanelBox title="行为漏斗（访问 → 登录 → 查询 → 办理）" link="OFFLINE" class="screen-cell">
-        <EChart :option="funnelChartOption" />
-      </PanelBox>
-
-      <PanelBox title="24 小时时段热力图" link="REALTIME" class="screen-cell screen-cell--wide">
+      <PanelBox title="24 小时时段热力图" link="REALTIME" class="screen-cell">
         <EChart :option="heatmapChartOption" />
-      </PanelBox>
-
-      <PanelBox title="用户留存曲线" link="OFFLINE" class="screen-cell">
-        <EChart :option="retentionChartOption" />
-      </PanelBox>
-    </div>
-
-    <!-- ④ 用户维度分布 -->
-    <div class="screen-row screen-row--charts">
-      <PanelBox title="地域分布" link="OFFLINE" class="screen-cell screen-cell--wide">
-        <EChart :option="regionChartOption" />
-      </PanelBox>
-
-      <PanelBox title="套餐分布" link="OFFLINE" class="screen-cell">
-        <EChart :option="packageChartOption" />
-      </PanelBox>
-
-      <PanelBox title="用户活跃度分层" link="OFFLINE" class="screen-cell">
-        <EChart :option="activityChartOption" />
       </PanelBox>
     </div>
   </ScreenLayout>
 </template>
 
 <style scoped>
-.screen-link {
-  padding: 5px 14px;
-  border: 1px solid rgba(90, 164, 255, 0.45);
-  border-radius: 16px;
-  background: rgba(61, 139, 255, 0.12);
-  color: #9ecbff;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  transition: all 0.2s;
-}
-
-.screen-link:hover {
-  border-color: #5aa4ff;
-  background: rgba(61, 139, 255, 0.25);
-  color: #eaf2ff;
-}
-
 .screen-row {
   display: flex;
   gap: 12px;
 }
 
-/* ① 数字卡一行五张，高度固定——它们是「一屏概览」，不该抢图表的空间 */
+/* ① 数字卡一行五张，高度固定——它们是「一屏概览」，不该抢图表的空间。
+   88px = 上下内边距 16 + 标签 14 + 间距 4 + 数值 34×1.1，留几像素余量；
+   字号再往上加时这里要跟着加，否则数值会被卡片裁掉底边。 */
 .screen-row--stats {
   flex: none;
-  height: 84px;
+  height: 88px;
 }
 
-/* ②③④ 三行平分剩余高度 */
+/* 其余行平分剩余高度 */
 .screen-row--charts {
   flex: 1;
   min-height: 0;
@@ -410,7 +294,7 @@ watch(trendRange, async (range) => {
   min-height: 0;
 }
 
-/* 中间一列稍宽：热力图与地图都是「铺开才好看」的图 */
+/* 中间一列稍宽：趋势曲线是「铺开才好看」的图 */
 .screen-cell--wide {
   flex: 1.35;
 }
@@ -430,7 +314,7 @@ watch(trendRange, async (range) => {
   background: transparent;
   color: #7b8db5;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }

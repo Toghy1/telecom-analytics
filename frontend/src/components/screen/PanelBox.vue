@@ -84,7 +84,7 @@ const LINK_META = {
 
 .panel__title {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.5px;
   color: #dbe7fb;
@@ -94,7 +94,7 @@ const LINK_META = {
   flex: none;
   padding: 1px 7px;
   border-radius: 9px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
   letter-spacing: 0.5px;
 }

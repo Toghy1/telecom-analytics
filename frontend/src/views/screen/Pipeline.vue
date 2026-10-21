@@ -70,6 +70,20 @@ const loading = ref(false)
 const sourceBadge = (code) => DIRTY_SOURCE[code]?.label || code
 const reasonLabel = (code) => DIRTY_RULE[code]?.label || code
 
+/**
+ * 失败时间的显示格式：`YYYY-MM-DD HH:mm:ss`。
+ *
+ * ⚠️ 后端 `DeadLetter.fail_time` 是 `LocalDateTime`，Jackson 默认吐
+ *    ISO-8601（`2026-10-21T04:33:12`），中间那个 `T` 在表格里既占宽
+ *    又不合全站约定（`utils/datetime.js`：全站只有一种时间写法）。
+ *    这里只做**显示层**的替换，不去改后端序列化——后端那份是标准格式，
+ *    别的地方（接口调试、直接看 JSON）依赖它。
+ *
+ * 顺带截掉毫秒：`toLocalDateTime()` 带出来的 `2026-10-21T04:33:12.123`
+ * 多出的三位小数只会让列更拥挤，而这一列展示到秒就够了。
+ */
+const failTimeText = (v) => (v ? String(v).replace('T', ' ').slice(0, 19) : '')
+
 async function loadDeadLetters(page = 1) {
   loading.value = true
   try {
@@ -142,10 +156,16 @@ async function changeRatioDays(days) {
 </script>
 
 <template>
-  <ScreenLayout title="系统运行分析" subtitle="管道健康与数据质量 · 系统本身跑得怎么样">
-    <template #actions>
-      <router-link class="screen-link" to="/screen">← 返回实时大屏</router-link>
-    </template>
+  <ScreenLayout
+    title="电信用户行为分析系统"
+    subtitle="系统运行分析 · 管道健康与数据质量"
+  >
+    <!--
+      ⚠️ 原先这里有一个 `#actions` 插槽放「← 返回实时大屏」的跳转链接。
+      2026-10-21 拆成三个标签页后**整块删掉**：页与页之间的导航统一由
+      `ScreenLayout` 的标签条承担，留着等于同一件事有两个入口，
+      而且标签条上已经高亮「系统运行分析」，那个「返回」显得多余。
+    -->
 
     <!-- ① 今日管道量 -->
     <div class="pipe-row">
@@ -247,7 +267,9 @@ async function changeRatioDays(days) {
                   <th style="width: 66px">ID</th>
                   <th style="width: 84px">来源</th>
                   <th style="width: 132px">失败原因</th>
-                  <th style="width: 146px">失败时间</th>
+                  <!-- 180px：字号放大到 14px 后，「2026-10-21 04:33:12」整串要 146px
+                       左右，加上左右各 8px 内边距与余量，146 会把秒数截掉 -->
+                  <th style="width: 180px">失败时间</th>
                   <th>原始内容</th>
                 </tr>
               </thead>
@@ -263,7 +285,7 @@ async function changeRatioDays(days) {
                     </span>
                   </td>
                   <td class="is-reason">{{ reasonLabel(row.fail_reason) }}</td>
-                  <td class="is-dim">{{ row.fail_time }}</td>
+                  <td class="is-dim">{{ failTimeText(row.fail_time) }}</td>
                   <!-- raw_content 可能很长（规则 7 判的就是超长），
                        用 title 让鼠标悬停能看到全文，表格本身不撑破 -->
                   <td class="dl__raw" :title="row.raw_content">{{ row.raw_content }}</td>
@@ -308,23 +330,6 @@ async function changeRatioDays(days) {
 </template>
 
 <style scoped>
-.screen-link {
-  padding: 5px 14px;
-  border: 1px solid rgba(90, 164, 255, 0.45);
-  border-radius: 16px;
-  background: rgba(61, 139, 255, 0.12);
-  color: #9ecbff;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  transition: all 0.2s;
-}
-
-.screen-link:hover {
-  border-color: #5aa4ff;
-  background: rgba(61, 139, 255, 0.25);
-  color: #eaf2ff;
-}
-
 .pipe-row {
   display: flex;
   gap: 12px;
@@ -355,7 +360,7 @@ async function changeRatioDays(days) {
 
 .pipe-date,
 .pipe-total {
-  font-size: 11px;
+  font-size: 13px;
   color: #7b8db5;
 }
 
@@ -375,14 +380,14 @@ async function changeRatioDays(days) {
 }
 
 .pipe-step__label {
-  font-size: 12px;
+  font-size: 14px;
   color: #8fa6cc;
   letter-spacing: 1px;
 }
 
 .pipe-step__num {
   font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', sans-serif;
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1.05;
   color: #eaf2ff;
@@ -397,12 +402,12 @@ async function changeRatioDays(days) {
 }
 
 .pipe-step__hint {
-  font-size: 10px;
+  font-size: 12px;
   color: #61729a;
 }
 
 .pipe-arrow {
-  font-size: 18px;
+  font-size: 20px;
   color: rgba(120, 160, 220, 0.5);
 }
 
@@ -417,13 +422,13 @@ async function changeRatioDays(days) {
 
 .pipe-rate__value {
   font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', sans-serif;
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
   color: #4fd1e0;
 }
 
 .pipe-rate__label {
-  font-size: 11px;
+  font-size: 13px;
   color: #7b8db5;
 }
 
@@ -445,7 +450,7 @@ async function changeRatioDays(days) {
 .dl__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
   table-layout: fixed;
 }
 
@@ -457,7 +462,7 @@ async function changeRatioDays(days) {
   border-bottom: 1px solid rgba(90, 150, 230, 0.22);
   background: rgba(13, 34, 66, 0.96);
   color: #8fa6cc;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
 }
@@ -485,7 +490,7 @@ async function changeRatioDays(days) {
 
 .dl__raw {
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 13px;
   color: #7f93bb;
 }
 
@@ -493,8 +498,8 @@ async function changeRatioDays(days) {
   display: inline-block;
   padding: 0 6px;
   border-radius: 8px;
-  font-size: 10px;
-  line-height: 15px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .dl__tag.is-realtime {
@@ -524,7 +529,7 @@ async function changeRatioDays(days) {
 }
 
 .dl__info {
-  font-size: 11px;
+  font-size: 13px;
   color: #7b8db5;
 }
 
@@ -541,7 +546,7 @@ async function changeRatioDays(days) {
   background: rgba(61, 139, 255, 0.12);
   color: #9ecbff;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -575,7 +580,7 @@ async function changeRatioDays(days) {
   background: transparent;
   color: #7b8db5;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }

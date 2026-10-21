@@ -4,9 +4,9 @@
  *
  * ⚠️ **本页没有任何脱敏代码**，这是刻意的、也是红线。列表里的 `login_name` 与
  *    `id_card` 拿到的**本身就是脱敏态**——脱敏在后端 Entity → VO 完成（选型⑥）。
- *    「新增账号」表单收的是明文手机号，但那个明文只在表单里存在一瞬间，
- *    提交后由 `api/admin.js` 交给 mock 层扮演的「假后端」脱敏，**不落数组**。
- *    详见 `api/mock/account.js` 里 `toMaskedLoginName` 上方那段注释。
+ *    「新增账号」表单收的是明文手机号，但那个明文只在表单里存在一瞬间：
+ *    随请求体交给 `backend/business`，入库明文、出参脱敏。
+ *    详见 `api/admin.js#createAccount` 与 `AdminAccountVO`。
  *
  * ⚠️ **本页也不产生任何埋点。** 十二个事件全属营业厅，且管理员按角色表
  *    「不产生行为数据」，`tracker.js#send()` 那道闸会把这里的一切拦掉。
@@ -201,9 +201,8 @@ async function handleResetPassword(row) {
   submittingId.value = row.id
   try {
     await resetAccountPassword({ id: row.id })
-    // ⚠️ 假数据阶段这是「空操作」：`DEMO_ACCOUNTS` 里的明文口令不受影响，
-    //    重置后用原口令仍能登录。提示语里说清楚，免得演示时被当成 bug。
-    ElMessage.success('密码已重置（假数据阶段口令不变，仍为演示口令）')
+    // 后端把初始口令 `123456` 的 BCrypt 哈希写回，不会把口令回传给浏览器。
+    ElMessage.success('密码已重置为初始密码 123456')
   } catch (e) {
     ElMessage.error(e.message || '重置失败')
   } finally {

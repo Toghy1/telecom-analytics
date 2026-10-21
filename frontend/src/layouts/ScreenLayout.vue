@@ -27,11 +27,27 @@
  */
 
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
+
+/**
+ * 分析平台的三个标签页。
+ *
+ * ⚠️ **放在布局里而不是各页自己写**：三个页面共用同一条导航，写三份就会漂移
+ *    （加一页时漏改一处，表现为某个页面上少一个 tab，且没人会发现）。
+ *
+ * ⚠️ 名称与归属由 2026-10-21 的对话定稿：热力图留在实时大屏，link 标签不动。
+ *    顺序也是定死的——按「实时 → 离线 → 系统」由近及远，与数据的新鲜度一致。
+ */
+const TABS = [
+  { name: 'screenRealtime', label: '实时大屏' },
+  { name: 'screenOffline', label: '离线数据分析' },
+  { name: 'screenPipeline', label: '系统运行分析' }
+]
 
 /** 逻辑尺寸。所有内层布局都按这两个数写死，不再关心真实视口。 */
 const LOGIC_WIDTH = 1920
@@ -105,6 +121,19 @@ async function handleLogout() {
             <p v-if="subtitle" class="screen__sub">{{ subtitle }}</p>
           </div>
         </div>
+        <!-- 三个标签页的导航。自绘（选型⑤：分析平台不引 Element Plus） -->
+        <nav class="screen__tabs">
+          <router-link
+            v-for="tab in TABS"
+            :key="tab.name"
+            :to="{ name: tab.name }"
+            class="screen__tab"
+            :class="{ 'is-active': route.name === tab.name }"
+          >
+            {{ tab.label }}
+          </router-link>
+        </nav>
+
         <div class="screen__actions">
           <slot name="actions" />
           <button class="screen__quit" type="button" @click="handleLogout">退出</button>
@@ -172,14 +201,21 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   flex: none;
-  height: 62px;
+  /* 66px 是跟着字号一起定的：标题 28 + 副标题 14 + 间距，62 会紧到贴边。
+     舞台总高固定 1080，头部多占的 4px 从下面的图表行里出，不影响布局 */
+  height: 66px;
   padding: 0 4px 0 0;
 }
 
 .screen__brand {
+  /* 左右两翼各占一份、标签条不伸缩——三个 tab 才会**严格居中**。
+     若只给 actions 加 `margin-left: auto`，auto 外边距会与标签条的
+     `margin: auto` 三分剩余空间，标签条就偏向左边，三页切换时位置还会漂。 */
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .screen__mark {
@@ -192,7 +228,7 @@ async function handleLogout() {
 
 .screen__title {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #eaf2ff;
@@ -201,16 +237,58 @@ async function handleLogout() {
 
 .screen__sub {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 1px;
   color: #7b8db5;
 }
 
+/*
+ * 标签页导航。
+ *
+ * ⚠️ 用 `margin: 0 auto` 居中、而不是紧贴标题：标题有一定长度，
+ *    紧贴会让三个 tab 的位置随标题字数浮动，三页之间切换时眼睛要重新找。
+ *
+ * ⚠️ 激活态用**底色填充 + 亮字**，不用下划线：大屏是深色背景 + 光晕，
+ *    下划线在投屏时被光晕吃掉一半，反而看不出选中了哪个。
+ */
+.screen__tabs {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid rgba(90, 150, 230, 0.18);
+  border-radius: 18px;
+  background: rgba(10, 26, 52, 0.55);
+}
+
+.screen__tab {
+  padding: 6px 20px;
+  border-radius: 15px;
+  color: #7b8db5;
+  font-size: 15px;
+  letter-spacing: 1px;
+  text-decoration: none;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.screen__tab:hover {
+  color: #c8d6f0;
+}
+
+.screen__tab.is-active {
+  background: linear-gradient(180deg, rgba(61, 139, 255, 0.55) 0%, rgba(31, 111, 235, 0.45) 100%);
+  box-shadow: 0 0 12px rgba(90, 164, 255, 0.35) inset;
+  color: #eaf2ff;
+  font-weight: 600;
+}
+
 .screen__actions {
+  flex: 1;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
-  margin-left: auto;
 }
 
 /*
@@ -227,7 +305,7 @@ async function handleLogout() {
   background: transparent;
   color: rgba(200, 214, 240, 0.22);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 1px;
   cursor: pointer;
   transition: all 0.2s;

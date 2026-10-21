@@ -35,7 +35,7 @@ const demoAccounts = getDemoHint()
  */
 const ROLE_HOME = {
   USER: '/user/dashboard',
-  ANALYST: '/screen',
+  ANALYST: '/screen/realtime',
   ADMIN: '/admin/users'
 }
 

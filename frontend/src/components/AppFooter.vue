@@ -9,13 +9,17 @@
      当初放它是因为没有角色登录、`/screen` 也没挂守卫，演示时只能手敲 URL 进大屏，
      而大屏是本项目优先级最高的交付物，够不着它比页脚多一行字严重得多。两害相权先放着。
 
-     现在入口在**登录页按角色分流**：ANALYST 登录即落 `/screen`，
+     现在入口在**登录页按角色分流**：ANALYST 登录即落 `/screen/realtime`
+     （2026-10-21 分析平台拆成三个标签页后，落点由 `/screen` 改为具体页），
      见 `views/Login.vue` 的 `ROLE_HOME` 与 `resolveTarget()`。
 -->
 <template>
   <footer class="ftr">
     <span>电信用户行为分析系统 · P1 课程设计</span>
-    <span class="ftr__mock-note">当前为「纯前端 + 假数据」阶段，页面数据非真实</span>
+    <!-- 2026-10-21 接线后这句改过一次：原先写「纯前端 + 假数据」，但营业厅这组页面
+         已经走真接口、数据来自本地 MySQL（种子由 mock/seed_business.py 生成）。
+         再说「假数据」会让人以为接口没通、看到的是前端写死的数组。 -->
+    <span class="ftr__mock-note">演示环境：数据由本地业务库（MySQL）提供，非真实用户数据</span>
   </footer>
 </template>
 

@@ -46,7 +46,7 @@ const FONT = "'Microsoft YaHei', 'PingFang SC', sans-serif"
 const baseTextStyle = {
   color: THEME.text,
   fontFamily: FONT,
-  fontSize: 13
+  fontSize: 17
 }
 
 /** 每个 option 都要挂的基础件，避免逐处重复。 */
@@ -73,12 +73,12 @@ export function trendOption(rows, { range }) {
   const values = rows.map((row) => row.metric_value)
 
   return base({
-    grid: { left: 44, right: 16, top: 24, bottom: 26 },
+    grid: { left: 50, right: 16, top: 28, bottom: 30 },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       valueFormatter: (v) => `${v} 次`
     },
     xAxis: {
@@ -89,7 +89,7 @@ export function trendOption(rows, { range }) {
       axisTick: { show: false },
       axisLabel: {
         color: THEME.textSub,
-        fontSize: 11,
+        fontSize: 15,
         // 24 小时视图的点比 1 小时视图密，隔一个显示一个，否则标签会重叠
         interval: range === '24h' ? 2 : 0
       }
@@ -98,7 +98,7 @@ export function trendOption(rows, { range }) {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 11 },
+      axisLabel: { color: THEME.textSub, fontSize: 15 },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     series: [
@@ -153,7 +153,7 @@ export function categoryRingOption(rows) {
       trigger: 'item',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: '{b}<br/>{c} 次（{d}%）'
     },
     legend: {
@@ -161,7 +161,7 @@ export function categoryRingOption(rows) {
       itemWidth: 8,
       itemHeight: 8,
       icon: 'circle',
-      textStyle: { color: THEME.textSub, fontSize: 11 },
+      textStyle: { color: THEME.textSub, fontSize: 15 },
       // 六项在窄面板里一行放不下，换两行
       itemGap: 10
     },
@@ -196,20 +196,20 @@ export function pageHeatOption(rows, nameOf) {
   const sorted = [...rows].sort((a, b) => a.metric_value - b.metric_value)
 
   return base({
-    grid: { left: 92, right: 40, top: 10, bottom: 6 },
+    grid: { left: 100, right: 46, top: 10, bottom: 6 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       valueFormatter: (v) => `${v} 次`
     },
     xAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 11 },
+      axisLabel: { color: THEME.textSub, fontSize: 15 },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     yAxis: {
@@ -218,7 +218,7 @@ export function pageHeatOption(rows, nameOf) {
       data: sorted.map((row) => nameOf(row.page)),
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.text, fontSize: 11 }
+      axisLabel: { color: THEME.text, fontSize: 15 }
     },
     series: [
       {
@@ -243,7 +243,7 @@ export function pageHeatOption(rows, nameOf) {
           show: true,
           position: 'right',
           color: THEME.textSub,
-          fontSize: 11
+          fontSize: 15
         }
       }
     ]
@@ -280,7 +280,7 @@ export function funnelOption(map) {
       trigger: 'item',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: (p) => {
         const idx = FUNNEL_STEP.findIndex((s) => s.label === p.name)
         const first = data[0]?.value || 1
@@ -307,7 +307,7 @@ export function funnelOption(map) {
           show: true,
           position: 'inside',
           color: '#fff',
-          fontSize: 13,
+          fontSize: 17,
           fontWeight: 500,
           formatter: '{b}'
         },
@@ -332,12 +332,12 @@ export function heatmapOption({ days, series }) {
   const hours = Array.from({ length: 24 }, (_, i) => `${i}时`)
 
   return base({
-    grid: { left: 48, right: 16, top: 12, bottom: 46 },
+    grid: { left: 54, right: 16, top: 12, bottom: 52 },
     tooltip: {
       position: 'top',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: (p) => {
         const [hour, day, value] = p.value
         if (value === null || value === undefined) {
@@ -352,7 +352,7 @@ export function heatmapOption({ days, series }) {
       splitArea: { show: false },
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10, interval: 2 }
+      axisLabel: { color: THEME.textSub, fontSize: 14, interval: 2 }
     },
     yAxis: {
       type: 'category',
@@ -360,7 +360,7 @@ export function heatmapOption({ days, series }) {
       splitArea: { show: false },
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10 }
+      axisLabel: { color: THEME.textSub, fontSize: 14 }
     },
     visualMap: {
       min: 0,
@@ -371,7 +371,7 @@ export function heatmapOption({ days, series }) {
       bottom: 4,
       itemWidth: 10,
       itemHeight: 70,
-      textStyle: { color: THEME.textSub, fontSize: 10 },
+      textStyle: { color: THEME.textSub, fontSize: 14 },
       inRange: { color: ['#0f2444', '#1b3f73', '#2a6fd6', '#5aa4ff', '#9ecbff'] }
     },
     series: [
@@ -396,12 +396,12 @@ export function retentionOption({ dates, d1, d7 }) {
   const labels = dates.map((d) => d.slice(5)) // '2026-09-17' → '09-17'
 
   return base({
-    grid: { left: 42, right: 16, top: 30, bottom: 26 },
+    grid: { left: 48, right: 16, top: 32, bottom: 30 },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       // 缺口显示「—」而不是 0，读者一眼知道是没数据
       valueFormatter: (v) => (v === null || v === undefined ? '—' : `${v}%`)
     },
@@ -410,7 +410,7 @@ export function retentionOption({ dates, d1, d7 }) {
       right: 0,
       itemWidth: 12,
       itemHeight: 2,
-      textStyle: { color: THEME.textSub, fontSize: 11 }
+      textStyle: { color: THEME.textSub, fontSize: 15 }
     },
     xAxis: {
       type: 'category',
@@ -418,15 +418,15 @@ export function retentionOption({ dates, d1, d7 }) {
       boundaryGap: false,
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10, interval: 2 }
+      axisLabel: { color: THEME.textSub, fontSize: 14, interval: 2 }
     },
     yAxis: {
       type: 'value',
       name: '%',
-      nameTextStyle: { color: THEME.textSub, fontSize: 10 },
+      nameTextStyle: { color: THEME.textSub, fontSize: 14 },
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10 },
+      axisLabel: { color: THEME.textSub, fontSize: 14 },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     series: [
@@ -482,7 +482,7 @@ export function regionMapOption(rows) {
       trigger: 'item',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: (p) =>
         p.value === undefined || Number.isNaN(p.value)
           ? `${p.name}<br/>暂无用户`
@@ -496,7 +496,7 @@ export function regionMapOption(rows) {
       itemWidth: 10,
       itemHeight: 62,
       text: ['多', '少'],
-      textStyle: { color: THEME.textSub, fontSize: 10 },
+      textStyle: { color: THEME.textSub, fontSize: 14 },
       inRange: { color: THEME.mapRamp }
     },
     series: [
@@ -515,7 +515,7 @@ export function regionMapOption(rows) {
           borderWidth: 0.6
         },
         emphasis: {
-          label: { show: true, color: '#fff', fontSize: 10 },
+          label: { show: true, color: '#fff', fontSize: 14 },
           itemStyle: { areaColor: '#4f9bff' }
         },
         select: { disabled: true },
@@ -539,15 +539,16 @@ export function packagePieOption(rows) {
       trigger: 'item',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: '{b}<br/>{c} 人（{d}%）'
     },
     legend: {
-      bottom: 0,
+      // 字号放大后五个套餐名在窄面板里换成了两行，图例整体抬高 2px 留出余量
+      bottom: 2,
       itemWidth: 8,
       itemHeight: 8,
       icon: 'circle',
-      textStyle: { color: THEME.textSub, fontSize: 10 },
+      textStyle: { color: THEME.textSub, fontSize: 14 },
       itemGap: 8
     },
     series: [
@@ -555,7 +556,8 @@ export function packagePieOption(rows) {
         type: 'pie',
         roseType: 'radius',
         radius: ['16%', '66%'],
-        center: ['50%', '42%'],
+        // 图例占两行时，圆心再往上让一点（42% → 36%），否则饼的下缘会顶到图例
+        center: ['50%', '36%'],
         label: { show: false },
         labelLine: { show: false },
         itemStyle: { borderColor: 'rgba(6, 18, 38, 0.9)', borderWidth: 1 },
@@ -580,13 +582,13 @@ export function activityBarOption(rows) {
   const palette = ['#22c1a4', '#3d8bff', '#7b8db5']
 
   return base({
-    grid: { left: 44, right: 16, top: 22, bottom: 22 },
+    grid: { left: 50, right: 16, top: 26, bottom: 26 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       valueFormatter: (v) => `${v} 人`
     },
     xAxis: {
@@ -594,13 +596,13 @@ export function activityBarOption(rows) {
       data: rows.map((row) => row.name),
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 11 }
+      axisLabel: { color: THEME.textSub, fontSize: 15 }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10 },
+      axisLabel: { color: THEME.textSub, fontSize: 14 },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     series: [
@@ -618,7 +620,7 @@ export function activityBarOption(rows) {
           show: true,
           position: 'top',
           color: THEME.textSub,
-          fontSize: 11
+          fontSize: 15
         }
       }
     ]
@@ -643,12 +645,12 @@ export function dirtyRatioOption(rows) {
   const values = rows.map((row) => row.metric_value)
 
   return base({
-    grid: { left: 42, right: 26, top: 24, bottom: 26 },
+    grid: { left: 48, right: 26, top: 26, bottom: 30 },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       valueFormatter: (v) => `${v}%`
     },
     xAxis: {
@@ -657,13 +659,13 @@ export function dirtyRatioOption(rows) {
       boundaryGap: false,
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10, interval: rows.length > 10 ? 4 : 0 }
+      axisLabel: { color: THEME.textSub, fontSize: 14, interval: rows.length > 10 ? 4 : 0 }
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10, formatter: '{value}%' },
+      axisLabel: { color: THEME.textSub, fontSize: 14, formatter: '{value}%' },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     series: [
@@ -696,7 +698,7 @@ export function dirtyRatioOption(rows) {
           label: {
             formatter: '注入基线 8%',
             color: THEME.warn,
-            fontSize: 10,
+            fontSize: 14,
             position: 'insideEndTop'
           },
           data: [{ yAxis: 8 }]
@@ -716,13 +718,13 @@ export function ruleHitsOption(rows, total) {
   const sorted = [...rows].sort((a, b) => a.value - b.value)
 
   return base({
-    grid: { left: 116, right: 46, top: 10, bottom: 6 },
+    grid: { left: 134, right: 50, top: 10, bottom: 6 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       backgroundColor: 'rgba(8, 22, 46, 0.92)',
       borderColor: THEME.axisLine,
-      textStyle: { color: THEME.text, fontSize: 12 },
+      textStyle: { color: THEME.text, fontSize: 16 },
       formatter: (params) => {
         const p = params[0]
         const pct = total > 0 ? ((p.value / total) * 100).toFixed(1) : '0.0'
@@ -733,7 +735,7 @@ export function ruleHitsOption(rows, total) {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: THEME.textSub, fontSize: 10 },
+      axisLabel: { color: THEME.textSub, fontSize: 14 },
       splitLine: { lineStyle: { color: THEME.splitLine } }
     },
     yAxis: {
@@ -742,7 +744,7 @@ export function ruleHitsOption(rows, total) {
       data: sorted.map((row) => row.label),
       axisLine: { lineStyle: { color: THEME.axisLine } },
       axisTick: { show: false },
-      axisLabel: { color: THEME.text, fontSize: 11 }
+      axisLabel: { color: THEME.text, fontSize: 15 }
     },
     series: [
       {
@@ -763,7 +765,7 @@ export function ruleHitsOption(rows, total) {
             ]
           }
         },
-        label: { show: true, position: 'right', color: THEME.textSub, fontSize: 11 }
+        label: { show: true, position: 'right', color: THEME.textSub, fontSize: 15 }
       }
     ]
   })

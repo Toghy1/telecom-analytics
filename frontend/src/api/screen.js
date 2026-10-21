@@ -1,20 +1,17 @@
 import request from './request'
-import {
-  mockPageHeat,
-  mockCategoryDist,
-  buildTrend,
-  buildHourlyHeatmap,
-  buildHeatmapDayLabels
-} from './mock/screen'
 import { fetchRealtimeSnapshot, subscribeRealtime } from './realtime'
+import { EVENT_CATEGORY, EVENT_CATEGORY_LABEL } from '@/utils/constants'
 import { shiftDays } from '@/utils/datetime'
 
 /**
  * 大屏数据访问层。
  *
- * 离线指标（板块③④）已接本地后端（`GET /api/screen/offline-metrics`）；
- * 实时指标（板块①②）仍走假数据——实时链路不在本轮最小闭环里
- * （决策「开发期采用本地 Windows 最小闭环」）。页面组件一行未改。
+ * 四个板块全部接真后端（2026-10-21）：
+ *
+ *   板块①② 实时——`realtime-service`（8081），快照 + SSE + 趋势 / 热度 / 分布 / 热力图
+ *   板块③④ 离线——`analysis-service`（8080）的 `GET /api/screen/offline-metrics`
+ *
+ * 页面组件一行未改。
  *
  * 这一层存在的意义不只是「换个地方发请求」，更是**把这几个指标的查询口径
  * 收口到一处**。大屏有四个板块十来个图，若每个板块各自去拉一遍，
@@ -103,7 +100,7 @@ export function toCounterMap(rows) {
  * @returns {{stat_time: string, metric_value: number}[]} 升序
  */
 export function getTrend(range) {
-  return Promise.resolve(buildTrend(range))
+  return request.get('/realtime/trend', { params: { range } })
 }
 
 /**
@@ -119,13 +116,31 @@ export function getTrend(range) {
  *    图表会「顺手」把它排回降序，看起来一切正常，实际掩盖了接口的改动。
  */
 export function getPageHeat(limit = 10) {
-  const rows = [...mockPageHeat].sort((a, b) => b.metric_value - a.metric_value)
-  return Promise.resolve(rows.slice(0, limit))
+  return request.get('/realtime/page-heat', { params: { limit } })
 }
 
-/** 行为类型分布（环形图）。 */
+/**
+ * 行为类型分布（环形图）。
+ *
+ * 后端返回的是**12 个事件**的计数，这里按 `EVENT_CATEGORY` 折成 6 个类别。
+ * ⚠️ 结果**一定是 6 条**，横轴来自 `EVENT_CATEGORY_LABEL` 常量，不是来自
+ *    数据：某类今天一次都没发生时要画成 0，且占一格。若按数据分组，
+ *    空类别会整个从环上消失，看着像"只有 5 类行为"。
+ */
 export function getCategoryDist() {
-  return Promise.resolve(mockCategoryDist)
+  return request.get('/realtime/event-counts').then((rows) => {
+    const counts = {}
+    rows.forEach((row) => {
+      counts[row.event_code] = row.metric_value
+    })
+
+    return Object.keys(EVENT_CATEGORY_LABEL).map((category) => ({
+      category,
+      metric_value: Object.entries(EVENT_CATEGORY)
+        .filter(([, c]) => c === category)
+        .reduce((sum, [code]) => sum + (counts[code] ?? 0), 0)
+    }))
+  })
 }
 
 /* ------------------------------------------------------------------ *
@@ -211,12 +226,14 @@ export function getRetention() {
   })
 }
 
-/** 24 小时时段热力图（近 7 天 × 24 小时）。 */
+/**
+ * 24 小时时段热力图（近 7 天 × 24 小时）。
+ *
+ * 未到来的时段后端返回 `null`，**原样透传，不要兜底成 0**——
+ * 「还不知道」和「一个人都没有」是两件事，见 `api/mock/screen.js` 的说明。
+ */
 export function getHourlyHeatmap() {
-  return Promise.resolve({
-    days: buildHeatmapDayLabels(),
-    series: buildHourlyHeatmap()
-  })
+  return request.get('/realtime/hourly-heatmap')
 }
 
 /* ------------------------------------------------------------------ *

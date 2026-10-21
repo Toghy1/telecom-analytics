@@ -164,11 +164,38 @@ const routes = [
    *    `ANALYST` 登录即落在大屏，就成了**进得去出不来**，只能清 localStorage 换账号。
    *    退出出口已随本次一并补在 `ScreenLayout.vue`。
    */
+  /**
+   * 分析平台**拆成三个标签页**（2026-10-21）：
+   *
+   *   实时大屏       `/screen/realtime`  板块①② + 24 小时热力图
+   *   离线数据分析   `/screen/offline`   板块③④（除热力图）
+   *   系统运行分析   `/screen/pipeline`  原样不动
+   *
+   * 三页共用 `ScreenLayout` 里的标签条，导航不在各页里写第二份。
+   *
+   * ⚠️ **`/screen` 保留为重定向，不直接删掉**：登录后的落点
+   *    （`Login.vue` 的 `ROLE_HOME`）、旧书签、以及任何指向它的链接都还写着
+   *    `/screen`。直接删会落到兜底路由。重定向没有 `meta`，守卫对它放行后
+   *    立刻转到 `/screen/realtime`，再按目标路由的 `roles` 正常校验。
+   *
+   * ⚠️ 三条路由**都没有 `meta.track`**，与拆分前同理、同样是刻意的
+   *    （见文件顶部关于「系统观察自己」的说明）。
+   */
   {
     path: '/screen',
-    name: 'screen',
-    component: () => import('@/views/screen/Screen.vue'),
-    meta: { title: '用户行为分析', requiresAuth: true, roles: ['ANALYST', 'ADMIN'] }
+    redirect: '/screen/realtime'
+  },
+  {
+    path: '/screen/realtime',
+    name: 'screenRealtime',
+    component: () => import('@/views/screen/Realtime.vue'),
+    meta: { title: '实时大屏', requiresAuth: true, roles: ['ANALYST', 'ADMIN'] }
+  },
+  {
+    path: '/screen/offline',
+    name: 'screenOffline',
+    component: () => import('@/views/screen/Offline.vue'),
+    meta: { title: '离线数据分析', requiresAuth: true, roles: ['ANALYST', 'ADMIN'] }
   },
   {
     path: '/screen/pipeline',
