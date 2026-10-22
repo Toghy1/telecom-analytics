@@ -36,3 +36,8 @@ Thumbs.db
 *.local
 # tools：本地下载的二进制工具（如 cloudflared.exe），体积大且非源码
 tools/
+
+# ── 部署产物（构建 / 导出生成，不入库）──
+# 三个 Spring fat jar 与 mysqldump 导出的数据由 deploy/README.md 的步骤现场生成
+deploy/app/jars/*.jar
+deploy/mysql/init/01-demo01.sql

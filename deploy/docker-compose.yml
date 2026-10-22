@@ -1,0 +1,162 @@
+# 电信用户行为分析系统 —— 应用层容器编排
+#
+# 范围（决策「Flink 集群提交与 SFTP 上传段打通」之后的部署选择 A）：
+#   MySQL / Redis / SFTP / business / realtime / analysis / web
+# 不包括：Kafka（.101 原生）、Flink（.102 原生）——它们是计算集群，
+#          和业务应用本来就不该挤在同一台 4 GB 的机器上。
+#
+# ⚠️ 全部用 host 网络，不用 docker 自建网桥，原因见文件末尾「为什么不用网桥」。
+#    于是：没有 ports 映射（端口就是宿主机端口），没有服务名 DNS
+#    （容器之间一律走 127.0.0.1）。
+#
+# 启动：docker compose up -d --build
+# 前置：./app/jars/ 放三个 jar、./web/dist/ 放前端构建产物（见 README.md）
+
+name: demo01
+
+services:
+
+  mysql:
+    image: mysql:8.4
+    container_name: demo01-mysql
+    restart: unless-stopped
+    # 宿主机网络：3306 直接开在 .133 上，.102 的 Flink 作业才能连进来
+    network_mode: host
+    environment:
+      MYSQL_ROOT_PASSWORD: demo01_root
+      MYSQL_DATABASE: demo01
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 首次初始化（卷为空时）自动执行：建表 + 数据 + 远程账号
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -pdemo01_root --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: demo01-redis
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sftp:
+    build:
+      context: ./sftp
+      # 容器默认 DNS 在本机不通，构建期要借宿主网络拉 apk 索引
+      network: host
+    container_name: demo01-sftp
+    restart: unless-stopped
+    # sshd 在镜像里已改成 2222（宿主机 22 被系统 sshd 占着）
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - sftp_data:/home/demo01/upload
+
+  # 三个 Spring 服务共用一个镜像，靠 command 选 jar。
+  # build 只写一次：另外两个服务引用同一个 tag，compose 不会重复构建。
+  business:
+    build:
+      context: ./app
+    image: demo01-app:0.1.0
+    container_name: demo01-business
+    restart: unless-stopped
+    network_mode: host
+    command: ["java", "-Xms128m", "-Xmx256m", "-jar", "/app/jars/business-service-0.1.0.jar"]
+    environment:
+      TZ: Asia/Shanghai
+      DEMO01_DB_HOST: 127.0.0.1
+      DEMO01_DB_USER: root
+      DEMO01_DB_PASSWORD: demo01_root
+      DEMO01_KAFKA_BOOTSTRAP: 192.168.23.101:9092
+      DEMO01_TOKEN_STORE: redis
+      DEMO01_REDIS_HOST: 127.0.0.1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  realtime:
+    image: demo01-app:0.1.0
+    container_name: demo01-realtime
+    restart: unless-stopped
+    network_mode: host
+    command: ["java", "-Xms96m", "-Xmx192m", "-jar", "/app/jars/realtime-service-0.1.0.jar"]
+    environment:
+      TZ: Asia/Shanghai
+      DEMO01_DB_HOST: 127.0.0.1
+      DEMO01_DB_USER: root
+      DEMO01_DB_PASSWORD: demo01_root
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  analysis:
+    image: demo01-app:0.1.0
+    container_name: demo01-analysis
+    restart: unless-stopped
+    network_mode: host
+    command: ["java", "-Xms96m", "-Xmx192m", "-jar", "/app/jars/analysis-service-0.1.0.jar"]
+    environment:
+      TZ: Asia/Shanghai
+      DEMO01_DB_HOST: 127.0.0.1
+      DEMO01_DB_USER: root
+      DEMO01_DB_PASSWORD: demo01_root
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: demo01-web
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - business
+      - realtime
+      - analysis
+
+volumes:
+  mysql_data:
+    name: demo01_mysql_data
+  redis_data:
+    name: demo01_redis_data
+  sftp_data:
+    name: demo01_sftp_data
+
+# 为什么不用网桥（2026-10-22 实测）
+# ---------------------------------
+# .133 是 CentOS 7 + 内核 3.10，docker 26 在上面：
+#   容器互访（nginx → business:8082）正常；
+#   宿主机 ↔ 容器 双向都不通：
+#     · 宿主机 arping 容器 → 0 响应，ip neigh 全是 FAILED
+#     · 手工写静态 ARP 后 ping 仍 100% loss
+#     · 新建一个干净的自定义网络，现象一样（排除 compose 配置问题）
+#     · 于是所有 -p 发布端口从外部访问都是超时
+#   host 模式下容器直接用宿主机网络栈，实测 127.0.0.1 互通。
+# 换机器/换内核后想改回网桥：把各服务下的 network_mode 删掉，
+# 恢复 ports 映射，并把 127.0.0.1 换回服务名即可。

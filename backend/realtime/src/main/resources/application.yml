@@ -9,8 +9,8 @@ spring:
     # 写入方：Flink 的 RealtimeJob（dwd_behavior_log / dwd_behavior_dirty）
     #         与本服务（dws_metric_realtime 的每 2 秒快照）。
     # 本服务只读明细表，不再消费 Kafka。
-    url: jdbc:mysql://127.0.0.1:3306/demo01?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-    username: root
+    url: jdbc:mysql://${DEMO01_DB_HOST:127.0.0.1}:${DEMO01_DB_PORT:3306}/demo01?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${DEMO01_DB_USER:root}
     password: ${DEMO01_DB_PASSWORD:123456}
     hikari:
       maximum-pool-size: 5

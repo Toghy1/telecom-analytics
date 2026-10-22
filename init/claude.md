@@ -13,7 +13,7 @@
 
 ## 开发进度
 
-**当前状态：设计阶段完成（需求 / 数据模型 / 工程结构 / 业务功能技术选型四层全部定稿）；前端全部完成**——在本地 Windows 开发，营业厅 11 页 + 分析平台 3 页（2026-10-21 由「主页 + 子页」拆为实时大屏 / 离线数据分析 / 系统运行分析三个标签页）+ 管理后台 3 页（用户管理 / 套餐配置 / 工单管理）全部建成，四套路由布局齐备（游客端 `PortalLayout` / 用户端 `UserLayout` / 大屏 `ScreenLayout` / 管理后台 `AdminLayout`）。**本地最小闭环已跑通（2026-10-20）**：`db/schema.sql` 建 11 张表 → `etl/etl.py` 校验入库并聚合离线指标 → Spring Boot 3.5.16 / JDK 17 三个只读接口 → 前端 `src/api/` 换真接口 → headless Edge 浏览器验收通过；离线数据 **61,109 行**（入库 56,220 / 判脏 4,889，8.00%），漏斗 **20,551 → 3,654 → 3,037 → 638**。**环境搭建**：`docker-compose.yml` 已定稿（全文见 `init/环境搭建清单.md` v1.1 阶段 3.3），但**四个容器尚未实际拉起**——镜像 tag 须按该清单 3.2 的实拉结果锁定。**实时链路已打通（2026-10-21）**：Kafka 3.9.1（KRaft，跑在 `192.168.23.101`）→ 新增 `business`（8082，埋点上报）与 `realtime`（8081，消费洗净 + 五个指标 + SSE）两个独立 Maven 工程 → 前端大屏板块①②与埋点上报全部换真接口，**页面组件一行未改**；本机四进程联调通过（七个脏规则全命中、SSE 每 2 秒 5 条、重启后累计量从库重建）。**营业厅业务接口已接通（2026-10-21）**：`business`（8082）落成 JWT 认证（拦截器 + 内存白名单替身）与 7 组 REST 接口（登录 / 账号 / 余量 / 账单 / 套餐 / 促销 / 办理 / 工单），前端 `src/api/*.js` 全部由假数据换成真请求，**页面组件一行未改**；业务库种子由 `mock/seed_business.py` 生成（3 账号 / 5 套餐 / 6 活动 / 23 流水 / 8 办理 / 8 工单 / 6 用量）。**计算引擎已换为 Flink（2026-10-21）**：新增 `backend/flink-job`（Flink 1.17.2 / JDK 8），`OfflineJob` 批处理与 `etl/etl.py` 逐项对拍通过（56,220 / 4,889 / 62，漏斗一致），`RealtimeJob` 接管 Kafka 消费与七条判脏，Spring `realtime` 退为**只读 MySQL + SSE**；**Spark / HDFS 不再实施**。**管理后台接口已接通（2026-10-21）**：`business` 新增 `/api/admin/**` 12 根（账号 5 / 套餐 5 / 工单 2），前端三页全部换真请求，**页面组件一行未改**；接口层 31 项断言 + headless Edge 13 项断言全通过（服务端自锁 / 引用守卫 / 工单状态机逐条验证）。**VM 集群链路已打通（2026-10-22）**：Flink 两条作业均已提交到 `.102` 的 1.17.2 集群——`RealtimeJob`（`db1f33e3…`）持续消费 `.101` 的 Kafka 并落库；`OfflineJob`（`2d062a02…`，**45.9 秒 FINISHED**）读取经 **SFTP** 上传到 `.102:/root/demo01/in` 的造数文件，写回开发机 MySQL，结果与本地对拍一致（**56,220 / 4,889 / 62**），且不带 `--reset` 重跑行数不变（upsert 幂等）。提交集群期间踩通三处：SQL connector 与普通 connector 不能共存于 `lib/`、`.101` 时钟快 21 分钟导致正常事件被判 `TIME_ILLEGAL`、造数脚本注入的「未来时间」脏行会随真实时间流逝变成干净行并撞上文件日不变量。**下一步**：VM 上的 Docker 容器化部署与端到端联调（`docker-compose.yml` 至今一次都没在任何机器上执行过；另需把 `TokenStore` 换 Redis、SFTP 对端换成 `atmoz/sftp` 容器）。
+**当前状态：设计阶段完成（需求 / 数据模型 / 工程结构 / 业务功能技术选型四层全部定稿）；前端全部完成**——在本地 Windows 开发，营业厅 11 页 + 分析平台 3 页（2026-10-21 由「主页 + 子页」拆为实时大屏 / 离线数据分析 / 系统运行分析三个标签页）+ 管理后台 3 页（用户管理 / 套餐配置 / 工单管理）全部建成，四套路由布局齐备（游客端 `PortalLayout` / 用户端 `UserLayout` / 大屏 `ScreenLayout` / 管理后台 `AdminLayout`）。**本地最小闭环已跑通（2026-10-20）**：`db/schema.sql` 建 11 张表 → `etl/etl.py` 校验入库并聚合离线指标 → Spring Boot 3.5.16 / JDK 17 三个只读接口 → 前端 `src/api/` 换真接口 → headless Edge 浏览器验收通过；离线数据 **61,109 行**（入库 56,220 / 判脏 4,889，8.00%），漏斗 **20,551 → 3,654 → 3,037 → 638**。**环境搭建**：`docker-compose.yml` 已定稿（全文见 `init/环境搭建清单.md` v1.1 阶段 3.3），但**四个容器尚未实际拉起**——镜像 tag 须按该清单 3.2 的实拉结果锁定。**实时链路已打通（2026-10-21）**：Kafka 3.9.1（KRaft，跑在 `192.168.23.101`）→ 新增 `business`（8082，埋点上报）与 `realtime`（8081，消费洗净 + 五个指标 + SSE）两个独立 Maven 工程 → 前端大屏板块①②与埋点上报全部换真接口，**页面组件一行未改**；本机四进程联调通过（七个脏规则全命中、SSE 每 2 秒 5 条、重启后累计量从库重建）。**营业厅业务接口已接通（2026-10-21）**：`business`（8082）落成 JWT 认证（拦截器 + 内存白名单替身）与 7 组 REST 接口（登录 / 账号 / 余量 / 账单 / 套餐 / 促销 / 办理 / 工单），前端 `src/api/*.js` 全部由假数据换成真请求，**页面组件一行未改**；业务库种子由 `mock/seed_business.py` 生成（3 账号 / 5 套餐 / 6 活动 / 23 流水 / 8 办理 / 8 工单 / 6 用量）。**计算引擎已换为 Flink（2026-10-21）**：新增 `backend/flink-job`（Flink 1.17.2 / JDK 8），`OfflineJob` 批处理与 `etl/etl.py` 逐项对拍通过（56,220 / 4,889 / 62，漏斗一致），`RealtimeJob` 接管 Kafka 消费与七条判脏，Spring `realtime` 退为**只读 MySQL + SSE**；**Spark / HDFS 不再实施**。**管理后台接口已接通（2026-10-21）**：`business` 新增 `/api/admin/**` 12 根（账号 5 / 套餐 5 / 工单 2），前端三页全部换真请求，**页面组件一行未改**；接口层 31 项断言 + headless Edge 13 项断言全通过（服务端自锁 / 引用守卫 / 工单状态机逐条验证）。**VM 集群链路已打通（2026-10-22）**：Flink 两条作业均已提交到 `.102` 的 1.17.2 集群——`RealtimeJob`（`db1f33e3…`）持续消费 `.101` 的 Kafka 并落库；`OfflineJob`（`2d062a02…`，**45.9 秒 FINISHED**）读取经 **SFTP** 上传到 `.102:/root/demo01/in` 的造数文件，写回开发机 MySQL，结果与本地对拍一致（**56,220 / 4,889 / 62**），且不带 `--reset` 重跑行数不变（upsert 幂等）。提交集群期间踩通三处：SQL connector 与普通 connector 不能共存于 `lib/`、`.101` 时钟快 21 分钟导致正常事件被判 `TIME_ILLEGAL`、造数脚本注入的「未来时间」脏行会随真实时间流逝变成干净行并撞上文件日不变量。**应用层容器化部署已落地（2026-10-22）**：`.133` 上七个容器（MySQL / Redis / SFTP / business / realtime / analysis / nginx）全部起来并通过验收——前端首页与 `/screen` 子路由、离线指标、死信分页、登录与登出（**Redis TokenStore 已生效**，登出后旧 token 立即 401）、SSE 每 2 秒推送、埋点 `POST /api/track`、SFTP `2222` 上传、远程 MySQL（Windows 侧模拟 `.102` 连接）逐项通过；库内为 dump 迁移后的 **56,220 / 4,889 / 502**。**编排最终改用 host 网络**——`.133` 的 docker 网桥下宿主机与容器双向不通（原因与实测过程见决策「应用层容器化部署落地」）。**下一步**：把 `.102` 上两条 Flink 作业的 `--host` 由开发机改指 `.133` 容器 MySQL 并复跑端到端；之后是浏览器交互验收。
 
 ### 已完成
 - 项目定型：选定 P1 电信用户行为分析系统（主线项目）。
@@ -51,13 +51,14 @@
 - **计算引擎换为 Flink，两条作业均已跑通**（2026-10-21）：新增 `backend/flink-job`（Flink 1.17.2，JDK 8 运行、JDK 17 + `release=8` 构建）。**`OfflineJob`** 以有界文件为源，与 `etl/etl.py` 逐项对拍通过——入库 **56,220** / 判脏 **4,889** / 离线指标 **62 行**，漏斗 **20,551 → 3,654 → 3,037 → 638**，`event_time` 范围一致。**`RealtimeJob`** 以 Kafka 为源，接管实时消费与七条判脏；七条规则与离线**共用同一份 `BehaviorValidator`**，规则⑥通过 `DuplicateChecker` 接口分叉（离线内存 `Set`，实时「10 万条 LRU + 查 `dwd_behavior_log`」）。`backend/realtime` 删除 Kafka 消费者与内存计数器，退为**只读 MySQL + SSE**（五个指标每 2 秒按 SQL 重算，重启/跨零点无需重建累计量）。本机端到端联调通过：干净事件入库、重复上报只进死信、SSE 每 2 秒 5 条、指标联动正确。口径见决策「改用 Flink 替代 Spark + HDFS（批流一体化）」「实时消费迁入 Flink，Spring realtime 退为只读 + SSE」「Flink 两条作业落码口径与验收结果」。
 - **管理后台接口落码并验收**（2026-10-21）：`business` 新增 `/api/admin/**` **12 根**——账号（列表 / 新增 / 启停 / 重置密码 / 删除 5 根）、套餐（列表 / 选项 / 新增 / 编辑 / 删除 5 根）、工单（列表 / 状态流转 2 根）。三条守卫由服务端执行：自锁（不能停用 / 删除当前登录账号）、引用检查（有账单 / 办理 / 工单的账号、被引用的套餐不可删）、工单状态机只允许 `PENDING → PROCESSING → DONE`。前端 `api/admin.js` 由 476 行假数据缩到 211 行真请求，三页**页面组件一行未改**。**验收**：接口层 31 项断言全通过（含 USER 403 / 未登录 401 / 脱敏 / `status=0` 筛选 / 自锁 / 引用守卫 / 新增删除正向路径 / 状态机非法迁移）；headless Edge 13 项断言全通过（登录落 `/admin/users`、共 502 个、手机号脱敏、停售套餐可见、工单三状态按钮正确、零 JS 异常）。**验收中发现并修掉一个种子缺口**：502 个账号原本全是 `status=1`，管理后台「停用」筛选永远空表、也演示不了「启用」——`seed_business.py` 增一条 `UPDATE … status = 0 WHERE id = 1500`（总行数仍 502，须在 etl / Flink `--seed` 之后执行）。
 - **Flink 两条作业上 `.102` 集群，SFTP 段打通**（2026-10-22）：先用 `-Pcluster` 打 20 MB 集群包（不能用 77 MB fat jar），经 REST 上传提交。`RealtimeJob` 以 `--host 192.168.23.1` 写回开发机 MySQL，端到端验证通过。`OfflineJob` 的输入改为**经 SFTP 上传到 `.102:/root/demo01/in`** 的 15 个造数文件（`.101` → `.102`，18 MB），45.9 秒跑完，结果 **56,220 / 4,889 / 62**，与本地逐项一致。期间解决三处阻塞：① `.102` 的 `lib/` 里放着 `flink-sql-connector-kafka`（shade 版），其 `committedOffsets` 签名与作业 jar 内的普通 connector 不兼容，Flink parent-first 加载导致 `NoSuchMethodError` —— 把该 jar 移出 `lib/`；② `.101` 时钟快 21 分钟，正常事件被判 `TIME_ILLEGAL` —— `ntpdate` 校准（`.102` 经比对是准的）；③ **造数脚本的定时炸弹**：`TIME_OUT_OF_RANGE` 脏行按 `now + 1~30 天` 注入，真实时间追上来后这些行变成干净行，却仍在旧日期文件里，作业因「文件日与 event_date 不符」直接失败 —— 改为 `now + 365~3650 天`，数据永久判脏；重新造数后七类脏分布与总数不变，仅这些行的 `event_time` 变化。验证用的测试事件与死信已清理，库回到基线。
+- **应用层容器化部署落地**（2026-10-22）：`deploy/` 目录新建——`docker-compose.yml`（七个服务）、`app/Dockerfile`（三个 Spring 服务共用一个镜像 `demo01-app:0.1.0`，靠 `command` 选 jar）、`sftp/Dockerfile`（自建 alpine + openssh，sshd 监听 2222）、`web/nginx.conf`（四条反代，顺序与 Vite 代理一致）、`mysql/init/`（dump + 远程账号）。三处配置外置（`DEMO01_DB_*` / `DEMO01_KAFKA_BOOTSTRAP` / `DEMO01_REDIS_*` / `DEMO01_TOKEN_STORE`），`TokenStore` 由类拆为接口 + 两个条件装配实现（`MemoryTokenStore` 默认、`RedisTokenStore` 按 `token-store=redis` 启用），部署时走 Redis。**编排全部用 host 网络**：`.133` 上 docker 网桥的宿主机 ↔ 容器双向不通（容器互访反而正常），实测 arping 零响应、静态 ARP 后 ping 全丢、新建干净网络复现、端口发布外部超时；host 模式下容器直接用宿主网络栈，实测可用。验收结果：`http://192.168.23.133/` 200、`/screen` 路由回落 200、`/api/screen/pipeline/summary` 与 `offline-metrics` / `dead-letters` 有数据（4889 条死信）、`13800001234/123456` 登录返回脱敏账号、登出后 Redis key 减少且旧 token 401、SSE 持续推送、SFTP 上传落 `/home/demo01/upload`、Windows 侧 `demo01/123456` 连 `192.168.23.133:3306` 读到 56,220 行且只能访问 `demo01` 库。资源占用 1.3 G / 3.7 G 内存、14 G / 58 G 磁盘。
 - **Maven 全局配置修复**（2026-10-20，仓库外）：`D:\Hadoop\apache-maven-3.8.2\conf\settings.xml` 第 55 行重复声明 `<localRepository>` 导致 Maven 启动失败，已改为与用户级配置一致的 `D:\JavaWeb\mvn\MavenRepository`；修复后后端构建通过。
 
 ### 未完成
-- **环境搭建**：`docker-compose.yml` **已定稿**（见「已完成」），但**尚未在 VM 上实际执行**——四个镜像的 tag 待按清单 3.2 实拉锁定，容器未拉起，阶段 3.8 的整体验收未做。组件验证脚本（`verify.sh`）、Flink 集群提交、应用三件套、阶段 4 端到端链路均未开始。
+- **环境搭建**：应用层七个容器已于 2026-10-22 在 `.133` 拉起并验收（见「已完成」），但两处未收口：① `init/环境搭建清单.md`（已移出仓库，位于 `D:\作业\sx\`）仍是「基础设施四件套、应用三件套未开始」的旧口径，**未按部署实况回填**，且其中的 `docker-compose.yml` 全文与实际 `deploy/` 版本已不一致；② 组件验证脚本（`verify.sh`）未编写。另须记住：`docker compose down -v` 会清空全部数据卷，重灌数据要重新 `mysqldump`。
 - **前端浏览器交互验收**：管理后台三页的数据层与业务层已实测，但弹出层、按钮状态、跨页交叉验证须由用户在浏览器中逐条点通（本环境无浏览器自动化）。
-- **管理后台接口、Flink 集群提交、SFTP 上传段均已完成**（见「已完成」）；剩余未开始的是 VM 上的 Docker 容器化部署与端到端联调。
-- **本地最小闭环的剩余边界**：营业厅 6 个用户页与登录已于 2026-10-21 全部换真接口，但 **token 白名单是 `TokenStore` 内存实现**（本地没有 Redis）——重启 `business-service` 即全员掉线，上 VM 时必须换成 Redis（→ 决策「认证白名单暂以内存实现代替 Redis」）；**演示账期硬编码为 `2026-09`**（`api/bill.js` / `api/usage.js` 的 `DEMO_MONTH`），因为种子数据围绕该月构造，演示期结束后须删掉默认值。实时与离线两条作业已于 2026-10-22 提交到 `.102` 集群，SFTP 段已用 `.101` 系统 sshd 打通（尚未换成 `atmoz/sftp` 容器），**但都还没进 VM 容器编排**（→ 决策「开发期采用本地 Windows 最小闭环」「实时消费迁入 Flink，Spring realtime 退为只读 + SSE」）。
+- **管理后台接口、Flink 集群提交、SFTP 上传段、容器化部署均已完成**（见「已完成」）；剩余两件：① `.102` 上两条 Flink 作业仍写开发机 MySQL，需把 `--host` 改指 `192.168.23.133`（账号 `demo01` / `123456`）并复跑端到端；② 浏览器交互验收。
+- **本地最小闭环的剩余边界**：营业厅 6 个用户页与登录已于 2026-10-21 全部换真接口；token 白名单**本地开发仍走 `MemoryTokenStore`**（默认值 `memory`，本机无 Redis），**容器部署已切 `RedisTokenStore` 并经登录 / 登出验证**（→ 决策「认证白名单暂以内存实现代替 Redis」）；**演示账期硬编码为 `2026-09`**（`api/bill.js` / `api/usage.js` 的 `DEMO_MONTH`），因为种子数据围绕该月构造，演示期结束后须删掉默认值。实时与离线两条作业已于 2026-10-22 提交到 `.102` 集群，SFTP 段现由**容器版 sshd（`deploy/sftp`，2222）**承接（`.101` 经系统 `sftp` 上传这一段不变；`atmoz/sftp` 因镜像站只代理 `library/` 拉不到，已由自建镜像替代）。
 
 ### 参考材料
 - 老师下发的《数据采集可视化平台——客观可行实施思路》（2026-09-17，仅规划未执行）。
@@ -159,6 +160,8 @@
 ## 技术栈与 P1 技术要点逐项对齐，10 项全保留 - 2026-09-29
 
 > ⚠️ **2026-10-21 修正**：第 3 项 HDFS 与第 4 项 Spark 离线批处理**由 Flink 1.17.2 等价替换**（`OfflineJob` 批 + `RealtimeJob` 流），其余 8 项不变。答辩口径见决策「改用 Flink 替代 Spark + HDFS（批流一体化）」。以下原文保留。
+>
+> ⚠️ **2026-10-22 修正**：第 2 项 SFTP 的**容器镜像**由 `atmoz/sftp` 改为自建 `alpine + openssh`（`deploy/sftp`，sshd 2222），原因是镜像站只代理 `library/`；技术要点本身（SFTP 文件传输）不变。见决策「应用层容器化部署落地（host 网络 + 七容器）」。
 
 - 决策内容：技术栈完整对齐 P1 技术要点，共 10 项，一项不减：
   1. Kafka 实时接入（使用 **KRaft 模式，不引入 ZooKeeper**）
@@ -1329,7 +1332,7 @@
 - 决策内容：
   - **集群提交方式**：用 `mvn -Pcluster -DskipTests package` 打约 20 MB 的集群包（Flink 核心与 `slf4j-simple` 为 `provided`），经 REST 提交——`POST /jars/upload`（multipart）→ `GET /jars` 取 id → `POST /jars/{id}/run`（JSON 传 `entryClass` / `programArgs` / `parallelism`）。同一个 jar 含两个入口类，实时作业靠 `entryClass` 指定 `RealtimeJob`。
   - **数据库接入**：`.102` 上的作业写开发机 MySQL，`--host` 填 `192.168.23.1`（VMnet8 宿主地址），账号用专用远程账号 `'demo01'@'192.168.23.%'`（只授 `demo01.*`），3306 防火墙已放行。
-  - **SFTP 段（现阶段）**：`.101` 的造数产物经系统 `sftp`（sshd 自带子系统）上传到 `.102:/root/demo01/in`，`OfflineJob --input` 指向该目录。**不带 `--reset` 时作业是幂等的**（明细与指标均 upsert），可反复重跑。`atmoz/sftp` 容器留到 Docker 部署阶段替换**对端**，上传这一端不变。
+  - **SFTP 段（现阶段）**：`.101` 的造数产物经系统 `sftp`（sshd 自带子系统）上传到 `.102:/root/demo01/in`，`OfflineJob --input` 指向该目录。**不带 `--reset` 时作业是幂等的**（明细与指标均 upsert），可反复重跑。`atmoz/sftp` 容器留到 Docker 部署阶段替换**对端**，上传这一端不变。（2026-10-22 晚已兑现：对端换成自建 `deploy/sftp` 容器，`demo01@192.168.23.133:2222`，上传落命名卷 `demo01_sftp_data`，已验证可传；`.101 → .102` 系统 sshd 这一段仍是当前主链路。）
   - **造数「未来时间」口径**：`TIME_OUT_OF_RANGE` 脏行的时间改为 `now + 365~3650 天`，保证项目周期内永久判脏；**重新造数必须带 `--end 2026-10-19`**，否则文件窗口会漂移，与库内已有数据对不上。
   - **集群 `lib/` 不放 `flink-sql-connector-kafka`**：它是 shade 版，把 Kafka 客户端重定位到 `org.apache.flink.kafka.shaded.*`，与作业 jar 内的普通 `flink-connector-kafka` 签名不兼容；Flink 的 parent-first 优先加载 `lib/`，会直接 `NoSuchMethodError`。需要演示 Flink SQL 时临时挪入、用完挪出。
 - 背景/原因：
@@ -1339,6 +1342,37 @@
 - 影响范围：
   - 两条作业均已跑在 `.102` 集群：`RealtimeJob` 端到端验证通过；`OfflineJob` 45.9 秒 FINISHED，结果 **56,220 / 4,889 / 62**，与本地对拍一致。离线链路的 SFTP 段由「本地目录替代」变为真实传输。
   - **未完成**：VM 上的 Docker 容器化部署与端到端联调（`docker-compose.yml` 仍未在任何机器上执行过）；`TokenStore` 换 Redis；SFTP 对端换容器。
+- 确认人：用户
+
+---
+
+## 应用层容器化部署落地（host 网络 + 七容器） - 2026-10-22
+
+- 决策内容：容器化范围与落地口径定稿如下。
+  - **范围**：`MySQL / Redis / SFTP / business / realtime / analysis / nginx` 七个服务进 `deploy/docker-compose.yml`；**Kafka（`.101`）与 Flink（`.102`）不进编排**——它们是计算集群，与业务应用本就不该挤在同一台 4 GB 的机器上。
+  - **网络一律 host**：所有服务 `network_mode: host`，**不写 `ports` 映射、不建自定义网络**，容器之间与宿主机之间一律走 `127.0.0.1`。端口即宿主端口：80 / 8080 / 8081 / 8082 / 3306 / 6379 / 2222。
+  - **三个 Spring 服务共用一个镜像** `demo01-app:0.1.0`：只给 `business` 写 `build: ./app`，其余两个引用同一 tag（避免 compose 建出重复镜像与多余容器），靠 `command` 选 jar，并各自限堆（business `-Xmx256m`，realtime / analysis `-Xmx192m`）。
+  - **SFTP 自建镜像**：`alpine:3.20 + openssh`，账号 `demo01 / demo01_sftp`，`sshd` 监听 **2222**（host 网络下宿主 22 被系统 sshd 占着），上传目录是命名卷 `demo01_sftp_data`。
+  - **配置外置为环境变量**：`DEMO01_DB_HOST` / `DEMO01_DB_PORT` / `DEMO01_DB_USER` / `DEMO01_DB_PASSWORD`、`DEMO01_KAFKA_BOOTSTRAP`、`DEMO01_REDIS_HOST` / `DEMO01_REDIS_PORT`、`DEMO01_TOKEN_STORE`，默认值保持原样（本地开发无需改任何配置）。
+  - **`TokenStore` 由类改为接口 + 两个条件装配实现**：`MemoryTokenStore`（`token-store=memory`，`matchIfMissing`）与 `RedisTokenStore`（`token-store=redis`，key `demo01:token:<jwt>`，TTL 取 JWT 有效期）。拦截器与业务层一行未改——这正是当初「只换实现不换接口」的兑现。
+  - **数据迁移不走 Flyway**：`mysqldump --databases demo01 --single-transaction --routines --triggers --set-gtid-purged=OFF` 打进 `deploy/mysql/init/`，由镜像的 `/docker-entrypoint-initdb.d` 在**首次启动（卷为空）**时执行；`02-grant.sql` 保留，负责建 `.102` 用的远程账号 `'demo01'@'192.168.23.%'`（只授 `demo01.*`）。
+  - **部署目录**：`.133:/opt/demo01`，产物（三个 jar、前端 `dist`、dump）一律 gitignore——`deploy/app/jars/*.jar`、`deploy/mysql/init/01-demo01.sql`。
+- 背景/原因：
+  - **host 网络不是随手选的，是被这台机器逼出来的**。`.133`（内核 3.10.0-327 + Docker 26.1.4 + `vfs`）上出现一个反常现象：**容器之间互访完全正常**（nginx → `business:8082` 回 401），**宿主机与容器之间双向都不通**——
+    - 宿主机 `arping` 容器：0 个响应，`ip neigh` 全部落到 `FAILED`；
+    - 手工 `ip neigh replace … nud permanent` 写静态 ARP 后再 ping：仍然 100% 丢包；
+    - 新建一个干净的自定义网络、起一个临时 nginx：现象一模一样（排除 compose 配置与项目代码）；
+    - 容器 ping 自身的网关 `172.18.0.1` 同样不通，说明是**桥的本机端口与 veth 端口之间**断了；
+    - 后果是从外部访问任何 `-p` 发布端口都是超时，`docker-proxy` 收下连接后无法回连容器（表现为 `curl` 报 `Recv failure: Connection reset by peer`）。
+    host 模式下容器直接使用宿主网络栈，实测 `127.0.0.1` 立刻可用。这是**环境层面的绕行**，不是架构选择——换一台内核正常的机器，把 `network_mode` 删掉、恢复 `ports`、把 `127.0.0.1` 换回服务名即可回到常规形态（该说明已写在 compose 文件末尾）。
+  - **`atmoz/sftp` 拉不下来**：镜像是第三方命名空间，而本机配的三个镜像站**只代理 `library/` 下的官方镜像**，`docker pull` 挂起十几分钟无进展。openssh 在 alpine 的 main 源里就有，自建成本远低于继续试镜像。
+  - **容器内 DNS 不通**：容器里 `nslookup` 到 `192.168.23.2` 超时，`apk` 拉不到索引。构建期用 `build.network: host` 借宿主网络；运行期只需要容器互访，host 网络下也不再有这个问题。
+  - **上 VM 必须换 Redis 的承诺兑现**：`TokenStore` 内存实现「重启即全员掉线」，是决策「认证白名单暂以内存实现代替 Redis」写死的上 VM 前必做项。本轮用 Spring 的条件装配做成分支，本地开发继续用内存实现，部署环境切 Redis，两处代码同一份。
+- 影响范围：
+  - **验收结果（2026-10-22，全部从 Windows 发起）**：`/` 200、`/assets/index-*.js` 200、`/screen` 回落到 `index.html` 200；`/api/screen/pipeline/summary` 200、`/api/screen/offline-metrics` 有数据、`/api/screen/dead-letters` 总数 **4889**；`13800001234/123456` 登录返回 token 与**已脱敏**账号（`138****1234`）；`analyst` 登录 → 登出后 Redis 里 `demo01:token:*` 由 3 减到 2，**旧 token 再访问返回 401「登录已过期」**；`admin` 登录同样成功；`/api/realtime/metrics` 经 nginx 持续推送 SSE；`/api/realtime/snapshot` 五指标齐全；`POST /api/track` 200；SFTP `demo01@192.168.23.133:2222` 上传成功落到上传卷；Windows 侧 `mysql -h192.168.23.133 -udemo01 -p123456` 读到 `dwd_behavior_log` **56,220** 行，查 `mysql.user` 被拒（最小权限生效）。容器内核对：`dwd_behavior_log` 56,220 / `dwd_behavior_dirty` 4,889 / `t_account` 502。
+  - **未完成**：`.102` 上两条 Flink 作业仍写开发机 MySQL（`--host 192.168.23.1`），需改指 `192.168.23.133` 后复跑端到端；`init/环境搭建清单.md` 未按 `deploy/` 实况回填。
+  - **已知代价**：① 没有 compose 内网 DNS，新增服务时地址都要写 `127.0.0.1`，**端口冲突要自己盯**（宿主上已无其他进程占这些端口）；② MySQL `root` 口令 `demo01_root`、远程账号 `123456`、SFTP `demo01_sftp` **全是演示弱口令**，且 3306 已对网段开放——仅供内网演示，不得暴露到公网；③ `docker compose down -v` 会连同数据卷一起清掉。
+  - 文档侧：`deploy/README.md` 记录目录结构、构建与上传步骤、验证命令，以及 `web/dist` 用 `scp -r` 会报 canonicalization 失败时改用 `tar` 管道的替代做法。
 - 确认人：用户
 
 ---
@@ -1439,6 +1473,7 @@
 | 2026-10-21 | **同步《开发文档》**：§2.1 / §2.2 / §2.3 架构与两条链路全景改写为 Flink；§3 工程结构由 `offline`（Spark）改为 `flink-job`，并补落码端口表；§4.1 技术要点第 3、4 项（HDFS / Spark）标注由 Flink 取代，删除「Flink 明确不采用」，补替换理由与答辩口径；§8.1 / §8.2 重写链路图与落码状态；§9 阶段 7 / 8 与进度改写；§10 服务清单补 Flink 与开发期实际拓扑；§11 风险表删 Spark / HDFS、补 Flink 与时区；§12 补 Flink 集群部署与 checkpoint 两项；附录 C 决策索引由 72 条更新为 **75 条** |
 | 2026-10-21 | **管理后台接口落码并验收**：`business` 新增 `/api/admin/**` 12 根（账号 5 / 套餐 5 / 工单 2），`api/admin.js` 由假数据换成真请求（476 → 211 行），三页页面组件一行未改。接口层 **31 项断言** + headless Edge **13 项断言**全通过；服务端自锁 / 引用守卫 / 工单状态机均逐条验证。验收中发现种子无停用账号（「停用」筛选永远空表、无法演示「启用」），`seed_business.py` 补 `UPDATE t_account SET status = 0 WHERE id = 1500`（总行数仍 502，须在 etl / Flink `--seed` 之后执行）。开发进度三处同步：「当前状态」下一步改为 Flink 集群 / SFTP / VM 部署，「已完成」新增本条，「未完成」删除管理后台接口项 |
 | 2026-10-22 | **Flink 两条作业上 `.102` 集群 + SFTP 段打通**：`RealtimeJob` 端到端验证（Kafka → Flink → 开发机 MySQL，测试事件入库、假脏清空）；`OfflineJob` 读 `/root/demo01/in`（`.101` 经 SFTP 上传的 15 个文件），45.9 秒 FINISHED，**56,220 / 4,889 / 62**，`--reset` 后与本地对拍一致、不带 `--reset` 重跑行数不变。三处阻塞已记入「已完成」：`lib/` 里的 SQL connector 冲突、`.101` 时钟偏移、造数脚本「未来时间」随真实时间过期。开发进度三处同步：「当前状态」下一步改为 Docker 部署与端到端联调，「已完成」新增本条，「未完成」删去集群提交与 SFTP 两项。**统一写入**新增决策「Flink 集群提交与 SFTP 上传段打通」；附录 C 决策索引由 75 条更新为 **76 条**（数据链路 12 → 13） |
+| 2026-10-22 | **应用层容器化部署落地**：新建 `deploy/`（七个服务的 compose、三服务共用的 app 镜像、自建 alpine+openssh 的 sftp、nginx 四条反代、mysql dump 与远程账号），三处配置外置为 `DEMO01_*` 环境变量，`TokenStore` 由类拆为接口并新增 `RedisTokenStore`（`@ConditionalOnProperty`，部署环境切 Redis）。**因 `.133` 的 docker 网桥下宿主机与容器双向不通（容器互访正常），编排改为全部 host 网络**，容器间地址一律 `127.0.0.1`，SFTP sshd 改监听 2222。七容器在 `.133:/opt/demo01` 起来并逐项验收（首页 / 子路由 / 离线指标 / 死信 4889 / 登录登出 + Redis token + 旧 token 401 / SSE / 埋点上报 / SFTP 上传 / 远程 MySQL 56,220 行）。开发进度三处同步：「当前状态」下一步改为「`.102` 作业改指容器库 + 浏览器交互验收」，「已完成」新增本条，「未完成」按实况改写（环境搭建一项收窄为「清单未回填 + verify.sh 未写」）。**统一写入**新增决策「应用层容器化部署落地（host 网络 + 七容器）」；附录 C 决策索引由 76 条更新为 **77 条**（数据链路 13 → 14） |
 | 2026-10-21 | **代码落盘**：三个新工程（`business` / `realtime` / `flink-job`）与前端拆页、全量接线此前一直未提交（上次提交为 10-20），本次拆为 6 个提交入库：造数与种子、Flink 两条作业、营业厅 + 管理后台接口、realtime 退为只读 + SSE、子页锚点日修复、前端拆三页并接真接口。提交前四个后端模块 `mvn package` 与 `npm run build` 均通过 |
 
 <!--

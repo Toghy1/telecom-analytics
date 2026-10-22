@@ -59,6 +59,13 @@
       <artifactId>spring-kafka</artifactId>
     </dependency>
 
+    <!-- token 白名单的正式实现（决策「单点登录 JWT + Redis」）。
+         本地开发默认走内存实现，只有设 demo01.auth.token-store=redis 时才需要它。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+
     <!-- 数据访问（选型②） -->
     <dependency>
       <groupId>com.baomidou</groupId>
