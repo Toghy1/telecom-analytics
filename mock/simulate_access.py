@@ -522,7 +522,10 @@ def foul(rng, row, rule, now):
 
     elif rule == 'TIME_OUT_OF_RANGE':
         if rng.random() < 0.5:
-            row['event_time'] = iso(now + timedelta(days=rng.randint(1, 30)))
+            # 「未来」必须远到不会过期。早先按 +1~30 天造，真实时间追上后
+            # 这些行就不再是未来：它们变成干净行，却还躺在旧日期的文件里，
+            # 批作业会因「文件日与 event_date 不符」直接失败（2026-10-22 撞上）。
+            row['event_time'] = iso(now + timedelta(days=rng.randint(365, 3650)))
         else:
             row['event_time'] = iso(
                 SYSTEM_ONLINE_DATE - timedelta(days=rng.randint(1, 400)))
