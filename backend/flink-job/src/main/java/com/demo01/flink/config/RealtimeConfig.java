@@ -8,7 +8,7 @@ package com.demo01.flink.config;
  *   --topic       behavior-log
  *   --group       behavior-realtime-flink
  *   --from-earliest                     从 topic 最早的消息开始（默认 latest）
- *   --checkpoint  file:///tmp/flink-checkpoints
+ *   --checkpoint  file:///opt/flink/checkpoints
  *   --no-checkpoint                     关掉 checkpoint（本地快速试跑用）
  *   --parallelism 1
  *   --host / --port / --user / --password / --database   与离线作业相同
@@ -30,7 +30,9 @@ public class RealtimeConfig extends JobConfig {
     private String groupId = "behavior-realtime-flink";
     private boolean fromEarliest;
     private boolean checkpointEnabled = true;
-    private String checkpointDir = "file:///tmp/flink-checkpoints";
+    // 不放 /tmp：CentOS 7 默认每天清理 /tmp 里超过 10 天的文件，且上传的 jar 也落在
+    // /tmp/flink-web-*（集群一重启就没）。checkpoint 丢了不报错，只表现为「重启后位点丢失」。
+    private String checkpointDir = "file:///opt/flink/checkpoints";
     private int parallelism = 1;
 
     public static RealtimeConfig parse(String[] args) {
@@ -88,7 +90,7 @@ public class RealtimeConfig extends JobConfig {
         System.out.println("  --topic <topic>       默认 behavior-log");
         System.out.println("  --group <group>       默认 behavior-realtime-flink");
         System.out.println("  --from-earliest       从最早消息开始（默认 latest）");
-        System.out.println("  --checkpoint <目录>   默认 file:///tmp/flink-checkpoints");
+        System.out.println("  --checkpoint <目录>   默认 file:///opt/flink/checkpoints");
         System.out.println("  --no-checkpoint       关闭 checkpoint");
         System.out.println("  --parallelism <n>     默认 1");
         System.out.println("  --host <主机>         MySQL，默认 127.0.0.1");
