@@ -14,6 +14,7 @@ Kafka 在 `192.168.23.101`、Flink 在 `192.168.23.102`，都是原生安装，�
 ```
 deploy/
 ├── docker-compose.yml
+├── verify.sh               # 全链自检，在开发机跑，不需要登虚拟机
 ├── app/Dockerfile          # 三个 Spring 服务共用一个镜像
 ├── app/jars/               # 构建时放进去：三个 fat jar（不进 git）
 ├── sftp/Dockerfile         # alpine + openssh，sshd 监听 2222
@@ -75,7 +76,22 @@ docker compose ps
 
 ### 5. 验证
 
-从开发机（不是 `.133` 上）：
+**一条命令跑完全链自检**（在开发机 Windows 的 Git Bash 里，不用登任何虚拟机）：
+
+```bash
+bash deploy/verify.sh           # 默认只读，19 项检查
+bash deploy/verify.sh --track   # 额外走一遍「埋点 → Kafka → Flink → MySQL」
+```
+
+逐项打 `[ OK ]` / `[FAIL]` / `[SKIP]`，末尾汇总；有 FAIL 时退出码为 1。
+覆盖：九个端口、前端两页、三个离线接口、登录 + 脱敏 + **登出后旧 token 401**
+（白名单生效的唯一外部证据）、Flink 作业是否 RUNNING 且**只有一个**
+（两个消费者同 group 会让指标少一半）、SSE 推送、`snapshot` 五个指标。
+
+`--track` 会往库里写一行并等 `today_pv` +1——埋点接口回 200 只代表「收下了」，
+判定链路通不通只能看指标涨没涨，所以这一项默认关着。
+
+**只查单个接口时**，仍可直接 curl：
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.23.133/          # 200
