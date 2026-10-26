@@ -8,7 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:vm": "vite --mode vm",
+    "dev:offline": "vite --mode offline",
     "build": "vite build",
+    "build:offline": "vite build --mode offline",
     "preview": "vite preview"
   },
   "dependencies": {

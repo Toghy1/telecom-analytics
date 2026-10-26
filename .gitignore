@@ -15,9 +15,14 @@
 node_modules/
 # dist：前端构建产物，由 npm run build 生成
 dist/
+# dist-offline：离线演示包的构建产物，由 npm run build:offline 生成（交给老师的包从这里取）
+dist-offline/
 # target：Java / Maven 模块的构建输出
 target/
 *.class
+# Python 字节码缓存（etl / mock 脚本运行时生成）
+__pycache__/
+*.py[cod]
 
 # ── 前端开发缓存 ──
 .vite/
