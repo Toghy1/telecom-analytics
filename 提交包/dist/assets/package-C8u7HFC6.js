@@ -1,0 +1,1 @@
+import{t as e}from"./package-CUXplzOF.js";function t({limit:t}={}){let n=e.filter(e=>e.status===1).sort((e,t)=>e.monthly_fee-t.monthly_fee);return Promise.resolve(t?n.slice(0,t):n)}function n(t){let n=e.find(e=>e.id===t)||null;return Promise.resolve(n)}export{t as n,n as t};

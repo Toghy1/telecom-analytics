@@ -1,0 +1,1 @@
+function e(e){return e==null?`--`:Number(e).toFixed(2)}function t(e){return e==null?`--`:String(Number(e))}function n(e){return e?String(e).slice(0,10):`--`}function r(e){return e==null?`--`:Number(e).toLocaleString(`en-US`)}export{e as i,t as n,r,n as t};

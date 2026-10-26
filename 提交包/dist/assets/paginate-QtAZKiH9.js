@@ -1,0 +1,1 @@
+function e(e,t=1,n=10){let r=e.length,i=r===0?0:Math.ceil(r/n),a=Math.min(Math.max(1,t),Math.max(1,i)),o=(a-1)*n;return{total:r,pages:i,current:a,records:e.slice(o,o+n)}}export{e as t};
